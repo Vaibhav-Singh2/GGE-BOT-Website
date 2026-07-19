@@ -4,13 +4,13 @@
   "private": true,
   "dependencies": {
     "@emotion/styled": "^11.14.1",
-    "@mui/icons-material": "^7.3.9",
-    "@mui/material": "^7.3.9",
-    "@mui/x-date-pickers": "^8.27.2",
-    "dayjs": "^1.11.20",
-    "react": "^19.2.4",
-    "react-cookie": "^8.1.0",
-    "react-dom": "^19.2.4",
+    "@mui/icons-material": "^9.2.0",
+    "@mui/material": "^9.2.0",
+    "@mui/x-date-pickers": "^9.10.0",
+    "dayjs": "^1.11.21",
+    "react": "^19.2.7",
+    "react-cookie": "^8.1.2",
+    "react-dom": "^19.2.7",
     "react-scripts": "5.0.1",
     "reconnecting-websocket": "^4.4.0"
   },
@@ -39,7 +39,7 @@
     ]
   },
   "devDependencies": {
-    "baseline-browser-mapping": "^2.10.14",
+    "baseline-browser-mapping": "^2.10.43",
     "shx": "^0.4.0"
   }
 }
