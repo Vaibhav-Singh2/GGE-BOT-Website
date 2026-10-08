@@ -58,6 +58,7 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload'
 import FileUploadIcon from '@mui/icons-material/FileUpload'
 import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
+import AccessTimeIcon from '@mui/icons-material/AccessTime'
 import ManageAccountsIcon from '@mui/icons-material/ManageAccounts'
 import unitsCatalog from '../data/unitsCatalog.json'
 import { ErrorType, ActionType, LogLevel } from "../types.js"
@@ -458,6 +459,22 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
     const [feedbackMsg, setFeedbackMsg] = React.useState('')
     const fileInputRef = React.useRef(null)
     const logContainerRef = React.useRef(null)
+
+    // Live ticking timestamp for real-time uptime clock
+    const [currentTime, setCurrentTime] = React.useState(() => Date.now())
+    React.useEffect(() => {
+        const timer = setInterval(() => setCurrentTime(Date.now()), 1000)
+        return () => clearInterval(timer)
+    }, [])
+
+    const formatUptimeClock = ms => {
+        if (!ms || ms <= 0 || isNaN(ms)) return '00:00:00'
+        const totalSecs = Math.floor(ms / 1000)
+        const h = String(Math.floor(totalSecs / 3600)).padStart(2, '0')
+        const m = String(Math.floor((totalSecs % 3600) / 60)).padStart(2, '0')
+        const s = String(totalSecs % 60).padStart(2, '0')
+        return `${h}:${m}:${s}`
+    }
 
     // Client-side staged draft configuration
     const [draftPlugins, setDraftPlugins] = React.useState(() => JSON.parse(JSON.stringify(bot.plugins || {})))
@@ -939,6 +956,22 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                                 borderColor: isRunning ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'
                             }}
                         />
+                        {isRunning && (usersStatus[bot.id]?.sessionStartedAt || bot.state) && (
+                            <Chip
+                                icon={<AccessTimeIcon sx={{ fontSize: '0.72rem !important', color: '#10b981 !important' }} />}
+                                label={formatUptimeClock(Math.max(0, currentTime - (usersStatus[bot.id]?.sessionStartedAt || currentTime)))}
+                                size="small"
+                                sx={{
+                                    height: 24,
+                                    fontSize: '0.72rem',
+                                    fontWeight: 700,
+                                    bgcolor: 'rgba(16, 185, 129, 0.1)',
+                                    color: '#6ee7b7',
+                                    border: '1px solid rgba(16, 185, 129, 0.25)',
+                                    '& .MuiChip-icon': { ml: '4px' }
+                                }}
+                            />
+                        )}
                     </Box>
                 </Box>
 

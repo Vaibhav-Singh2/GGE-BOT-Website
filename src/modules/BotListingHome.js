@@ -29,7 +29,6 @@ import DnsIcon from '@mui/icons-material/Dns'
 import MonetizationOnIcon from '@mui/icons-material/MonetizationOn'
 import DiamondIcon from '@mui/icons-material/Diamond'
 import AccessTimeIcon from '@mui/icons-material/AccessTime'
-import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import { ErrorType, ActionType } from "../types.js"
 import settings from '../settings.json'
 
@@ -106,37 +105,16 @@ function AddBotDialog({ open, onClose, onSave, __ }) {
 export default function BotListingHome({ rows, usersStatus, ws, onSelectBot, __, languageCode }) {
     const [addOpen, setAddOpen] = React.useState(false)
 
-    // Rate of gain tracking per hour (coins/rubies)
-    const rateHistory = React.useRef({})
-    const [gainRates, setGainRates] = React.useState({})
-
+    // Live ticking timestamp for real-time uptime display and dynamic rates
+    const [currentTime, setCurrentTime] = React.useState(() => Date.now())
     React.useEffect(() => {
-        const now = Date.now()
-        const newRates = { ...gainRates }
+        const timer = setInterval(() => setCurrentTime(Date.now()), 1000)
+        return () => clearInterval(timer)
+    }, [])
 
-        rows.forEach(bot => {
-            const st = usersStatus[bot.id] ?? {}
-            const currentCoins = Number(st.cash ?? 0)
-            const currentRubies = Number(st.gold ?? 0)
-
-            if (!rateHistory.current[bot.id]) {
-                rateHistory.current[bot.id] = {
-                    startCoins: currentCoins,
-                    startRubies: currentRubies,
-                    startTime: now
-                }
-            } else {
-                const hist = rateHistory.current[bot.id]
-                const diffHours = (now - hist.startTime) / (1000 * 60 * 60)
-                if (diffHours >= 0.005) { // update after ~18 seconds
-                    const coinsPerHour = Math.max(0, Math.round((currentCoins - hist.startCoins) / diffHours))
-                    const rubiesPerHour = Math.max(0, Math.round((currentRubies - hist.startRubies) / diffHours))
-                    newRates[bot.id] = { coinsPerHour, rubiesPerHour }
-                }
-            }
-        })
-        setGainRates(newRates)
-    }, [usersStatus, rows])
+    // Client-side fallback start timestamps and balances
+    const localStartTimes = React.useRef({})
+    const localStartBalances = React.useRef({})
 
     const handleToggleState = (e, bot) => {
         e.stopPropagation()
@@ -154,6 +132,40 @@ export default function BotListingHome({ rows, usersStatus, ws, onSelectBot, __,
     const formatNumber = num => {
         if (!num || isNaN(num)) return '0'
         return new Intl.NumberFormat(languageCode || 'en', { notation: 'compact' }).format(num)
+    }
+
+    const formatGain = num => {
+        if (num === undefined || num === null || isNaN(num)) return '+0'
+        const n = Math.round(Number(num))
+        const sign = n > 0 ? '+' : n < 0 ? '-' : '+'
+        const abs = Math.abs(n)
+        let formatted
+        if (abs < 10000) {
+            formatted = abs.toLocaleString()
+        } else {
+            formatted = new Intl.NumberFormat(languageCode || 'en', { notation: 'compact' }).format(abs)
+        }
+        return `${sign}${formatted}`
+    }
+
+    const formatUptimeClock = ms => {
+        if (!ms || ms <= 0 || isNaN(ms)) return '00:00:00'
+        const totalSecs = Math.floor(ms / 1000)
+        const h = String(Math.floor(totalSecs / 3600)).padStart(2, '0')
+        const m = String(Math.floor((totalSecs % 3600) / 60)).padStart(2, '0')
+        const s = String(totalSecs % 60).padStart(2, '0')
+        return `${h}:${m}:${s}`
+    }
+
+    const formatUptimeHuman = ms => {
+        if (!ms || ms <= 0 || isNaN(ms)) return '0s'
+        const totalSecs = Math.floor(ms / 1000)
+        const h = Math.floor(totalSecs / 3600)
+        const m = Math.floor((totalSecs % 3600) / 60)
+        const s = totalSecs % 60
+        if (h > 0) return `${h}h ${m}m ${s}s`
+        if (m > 0) return `${m}m ${s}s`
+        return `${s}s`
     }
 
     const activeBotsCount = rows.filter(r => Boolean(r.state)).length
@@ -221,10 +233,54 @@ export default function BotListingHome({ rows, usersStatus, ws, onSelectBot, __,
                         const isRunning = Boolean(bot.state)
                         const status = usersStatus[bot.id] ?? {}
                         const resources = status.resources ?? {}
-                        const rates = gainRates[bot.id] ?? { coinsPerHour: 0, rubiesPerHour: 0 }
 
                         const currentCoins = Number(status.cash ?? 0)
                         const currentRubies = Number(status.gold ?? 0)
+
+                        // Manage local fallback session baseline
+                        if (isRunning) {
+                            if (!localStartTimes.current[bot.id]) {
+                                localStartTimes.current[bot.id] = status.sessionStartedAt || currentTime
+                            }
+                            if (!localStartBalances.current[bot.id] && (currentCoins > 0 || currentRubies > 0)) {
+                                localStartBalances.current[bot.id] = { coins: currentCoins, rubies: currentRubies }
+                            }
+                        } else {
+                            delete localStartTimes.current[bot.id]
+                            delete localStartBalances.current[bot.id]
+                        }
+
+                        const sessionStartedAt = status.sessionStartedAt || (isRunning ? localStartTimes.current[bot.id] : null)
+                        const uptimeMs = (isRunning && sessionStartedAt) ? Math.max(0, currentTime - sessionStartedAt) : 0
+                        const elapsedHours = uptimeMs / (1000 * 60 * 60)
+
+                        // Calculate coins gain & hourly rate
+                        const localStartCoins = localStartBalances.current[bot.id]?.coins ?? currentCoins
+                        const coinsGained = isRunning
+                            ? (status.coinsGained !== undefined ? Number(status.coinsGained) : (currentCoins - localStartCoins))
+                            : 0
+                        let coinsPerHour = 0
+                        if (isRunning) {
+                            if (status.coinsPerHour !== undefined && status.coinsPerHour !== 0) {
+                                coinsPerHour = Number(status.coinsPerHour)
+                            } else if (elapsedHours >= 0.004) {
+                                coinsPerHour = Math.round(coinsGained / elapsedHours)
+                            }
+                        }
+
+                        // Calculate rubies gain & hourly rate
+                        const localStartRubies = localStartBalances.current[bot.id]?.rubies ?? currentRubies
+                        const rubiesGained = isRunning
+                            ? (status.rubiesGained !== undefined ? Number(status.rubiesGained) : (currentRubies - localStartRubies))
+                            : 0
+                        let rubiesPerHour = 0
+                        if (isRunning) {
+                            if (status.rubiesPerHour !== undefined && status.rubiesPerHour !== 0) {
+                                rubiesPerHour = Number(status.rubiesPerHour)
+                            } else if (elapsedHours >= 0.004) {
+                                rubiesPerHour = Math.round(rubiesGained / elapsedHours)
+                            }
+                        }
 
                         // Time Skips breakdown
                         const skips = [
@@ -257,7 +313,7 @@ export default function BotListingHome({ rows, usersStatus, ws, onSelectBot, __,
                                     gap: 2.5
                                 }}
                             >
-                                {/* Left Section: Account Identity & Server Realm */}
+                                {/* Left Section: Account Identity & Server Realm & Uptime */}
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 200 }}>
                                     <Box
                                         sx={{
@@ -293,20 +349,44 @@ export default function BotListingHome({ rows, usersStatus, ws, onSelectBot, __,
                                                     borderColor: isRunning ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'
                                                 }}
                                             />
+                                            {isRunning && (
+                                                <Tooltip title={`Session Uptime: ${formatUptimeHuman(uptimeMs)}`}>
+                                                    <Chip
+                                                        icon={<AccessTimeIcon sx={{ fontSize: '0.72rem !important', color: '#10b981 !important' }} />}
+                                                        label={formatUptimeClock(uptimeMs)}
+                                                        size="small"
+                                                        sx={{
+                                                            height: 20,
+                                                            fontSize: '0.68rem',
+                                                            fontWeight: 700,
+                                                            bgcolor: 'rgba(16, 185, 129, 0.1)',
+                                                            color: '#6ee7b7',
+                                                            border: '1px solid rgba(16, 185, 129, 0.25)',
+                                                            '& .MuiChip-icon': { ml: '4px' }
+                                                        }}
+                                                    />
+                                                </Tooltip>
+                                            )}
                                         </Box>
                                         <Typography variant="caption" sx={{ color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 0.8, mt: 0.2 }}>
                                             <span>Realm: <strong>{serverName}</strong></span>
                                             <span>•</span>
                                             <span>ID: #{bot.id}</span>
+                                            {isRunning && (
+                                                <>
+                                                    <span>•</span>
+                                                    <span style={{ color: '#cbd5e1' }}>Uptime: <strong style={{ color: '#10b981' }}>{formatUptimeHuman(uptimeMs)}</strong></span>
+                                                </>
+                                            )}
                                         </Typography>
                                     </Box>
                                 </Box>
 
-                                {/* Middle Section 1: Coins & Rubies Economy (Current + /hr rate) */}
+                                {/* Middle Section 1: Coins & Rubies Economy (Current + /hr rate + session gain counter) */}
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
                                     {/* Coins metric */}
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
-                                        <Box sx={{ width: 32, height: 32, borderRadius: '8px', bgcolor: 'rgba(245, 158, 11, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b' }}>
+                                        <Box sx={{ width: 34, height: 34, borderRadius: '8px', bgcolor: 'rgba(245, 158, 11, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b' }}>
                                             <MonetizationOnIcon fontSize="small" />
                                         </Box>
                                         <Box>
@@ -315,16 +395,32 @@ export default function BotListingHome({ rows, usersStatus, ws, onSelectBot, __,
                                             </Typography>
                                             <Typography variant="body2" sx={{ fontWeight: 700, color: '#f8fafc', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 0.8 }}>
                                                 {formatNumber(currentCoins)}
-                                                <span style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
-                                                    +{formatNumber(rates.coinsPerHour)}/h
-                                                </span>
+                                                <Tooltip title={`Session Gain: ${coinsGained >= 0 ? '+' : ''}${Math.round(coinsGained).toLocaleString()} coins | Rate: ${coinsPerHour >= 0 ? '+' : ''}${Math.round(coinsPerHour).toLocaleString()}/h`}>
+                                                    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.6 }}>
+                                                        <span style={{ fontSize: '0.72rem', color: coinsPerHour >= 0 ? '#10b981' : '#ef4444', fontWeight: 600 }}>
+                                                            {coinsPerHour >= 0 ? '+' : ''}{formatNumber(coinsPerHour)}/h
+                                                        </span>
+                                                        <span style={{
+                                                            fontSize: '0.68rem',
+                                                            color: coinsGained >= 0 ? '#38bdf8' : '#f87171',
+                                                            fontWeight: 700,
+                                                            bgcolor: 'rgba(56, 189, 248, 0.1)',
+                                                            px: 0.6,
+                                                            py: 0.1,
+                                                            borderRadius: '4px',
+                                                            border: '1px solid rgba(56, 189, 248, 0.2)'
+                                                        }}>
+                                                            {formatGain(coinsGained)}
+                                                        </span>
+                                                    </Box>
+                                                </Tooltip>
                                             </Typography>
                                         </Box>
                                     </Box>
 
                                     {/* Rubies metric */}
                                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
-                                        <Box sx={{ width: 32, height: 32, borderRadius: '8px', bgcolor: 'rgba(239, 68, 68, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}>
+                                        <Box sx={{ width: 34, height: 34, borderRadius: '8px', bgcolor: 'rgba(239, 68, 68, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}>
                                             <DiamondIcon fontSize="small" />
                                         </Box>
                                         <Box>
@@ -333,9 +429,25 @@ export default function BotListingHome({ rows, usersStatus, ws, onSelectBot, __,
                                             </Typography>
                                             <Typography variant="body2" sx={{ fontWeight: 700, color: '#f8fafc', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 0.8 }}>
                                                 {formatNumber(currentRubies)}
-                                                <span style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
-                                                    +{formatNumber(rates.rubiesPerHour)}/h
-                                                </span>
+                                                <Tooltip title={`Session Gain: ${rubiesGained >= 0 ? '+' : ''}${Math.round(rubiesGained).toLocaleString()} rubies | Rate: ${rubiesPerHour >= 0 ? '+' : ''}${Math.round(rubiesPerHour).toLocaleString()}/h`}>
+                                                    <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.6 }}>
+                                                        <span style={{ fontSize: '0.72rem', color: rubiesPerHour >= 0 ? '#10b981' : '#ef4444', fontWeight: 600 }}>
+                                                            {rubiesPerHour >= 0 ? '+' : ''}{formatNumber(rubiesPerHour)}/h
+                                                        </span>
+                                                        <span style={{
+                                                            fontSize: '0.68rem',
+                                                            color: rubiesGained >= 0 ? '#f43f5e' : '#f87171',
+                                                            fontWeight: 700,
+                                                            bgcolor: 'rgba(244, 63, 94, 0.1)',
+                                                            px: 0.6,
+                                                            py: 0.1,
+                                                            borderRadius: '4px',
+                                                            border: '1px solid rgba(244, 63, 94, 0.2)'
+                                                        }}>
+                                                            {formatGain(rubiesGained)}
+                                                        </span>
+                                                    </Box>
+                                                </Tooltip>
                                             </Typography>
                                         </Box>
                                     </Box>
