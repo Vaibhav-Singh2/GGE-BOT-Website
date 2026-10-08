@@ -25,10 +25,11 @@ import AddIcon from '@mui/icons-material/Add'
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'
 import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturing'
-import ShieldIcon from '@mui/icons-material/Shield'
-import MilitaryTechIcon from '@mui/icons-material/MilitaryTech'
-import StorageIcon from '@mui/icons-material/Storage'
 import DnsIcon from '@mui/icons-material/Dns'
+import MonetizationOnIcon from '@mui/icons-material/MonetizationOn'
+import DiamondIcon from '@mui/icons-material/Diamond'
+import AccessTimeIcon from '@mui/icons-material/AccessTime'
+import TrendingUpIcon from '@mui/icons-material/TrendingUp'
 import { ErrorType, ActionType } from "../types.js"
 import settings from '../settings.json'
 
@@ -105,6 +106,38 @@ function AddBotDialog({ open, onClose, onSave, __ }) {
 export default function BotListingHome({ rows, usersStatus, ws, onSelectBot, __, languageCode }) {
     const [addOpen, setAddOpen] = React.useState(false)
 
+    // Rate of gain tracking per hour (coins/rubies)
+    const rateHistory = React.useRef({})
+    const [gainRates, setGainRates] = React.useState({})
+
+    React.useEffect(() => {
+        const now = Date.now()
+        const newRates = { ...gainRates }
+
+        rows.forEach(bot => {
+            const st = usersStatus[bot.id] ?? {}
+            const currentCoins = Number(st.cash ?? 0)
+            const currentRubies = Number(st.gold ?? 0)
+
+            if (!rateHistory.current[bot.id]) {
+                rateHistory.current[bot.id] = {
+                    startCoins: currentCoins,
+                    startRubies: currentRubies,
+                    startTime: now
+                }
+            } else {
+                const hist = rateHistory.current[bot.id]
+                const diffHours = (now - hist.startTime) / (1000 * 60 * 60)
+                if (diffHours >= 0.005) { // update after ~18 seconds
+                    const coinsPerHour = Math.max(0, Math.round((currentCoins - hist.startCoins) / diffHours))
+                    const rubiesPerHour = Math.max(0, Math.round((currentRubies - hist.startRubies) / diffHours))
+                    newRates[bot.id] = { coinsPerHour, rubiesPerHour }
+                }
+            }
+        })
+        setGainRates(newRates)
+    }, [usersStatus, rows])
+
     const handleToggleState = (e, bot) => {
         e.stopPropagation()
         bot.state = !bot.state
@@ -116,6 +149,11 @@ export default function BotListingHome({ rows, usersStatus, ws, onSelectBot, __,
         if (window.confirm(`Delete bot ${bot.name}?`)) {
             ws.send(JSON.stringify([ErrorType.Success, ActionType.RemoveUser, [bot]]))
         }
+    }
+
+    const formatNumber = num => {
+        if (!num || isNaN(num)) return '0'
+        return new Intl.NumberFormat(languageCode || 'en', { notation: 'compact' }).format(num)
     }
 
     const activeBotsCount = rows.filter(r => Boolean(r.state)).length
@@ -144,7 +182,7 @@ export default function BotListingHome({ rows, usersStatus, ws, onSelectBot, __,
                         />
                     </Box>
                     <Typography variant="body2" sx={{ color: '#94a3b8' }}>
-                        Manage your connected game accounts, automation status, and launch bot operations.
+                        Manage your connected game accounts, live economy, time skips, and routine status.
                     </Typography>
                 </Box>
 
@@ -182,9 +220,23 @@ export default function BotListingHome({ rows, usersStatus, ws, onSelectBot, __,
                     rows.map(bot => {
                         const isRunning = Boolean(bot.state)
                         const status = usersStatus[bot.id] ?? {}
-                        const enabledPluginsList = Object.entries(bot.plugins || {})
-                            .filter(([_, v]) => Boolean(v?.state) && !v?.forced)
-                            .map(([k]) => k)
+                        const resources = status.resources ?? {}
+                        const rates = gainRates[bot.id] ?? { coinsPerHour: 0, rubiesPerHour: 0 }
+
+                        const currentCoins = Number(status.cash ?? 0)
+                        const currentRubies = Number(status.gold ?? 0)
+
+                        // Time Skips breakdown
+                        const skips = [
+                            { label: '1m', count: resources['1MinSkip'] || 0 },
+                            { label: '5m', count: resources['5MinSkip'] || 0 },
+                            { label: '10m', count: resources['10MinSkip'] || 0 },
+                            { label: '30m', count: resources['30MinSkip'] || 0 },
+                            { label: '1h', count: resources['60MinSkip'] || 0 },
+                            { label: '5h', count: resources['5HourSkip'] || 0 },
+                            { label: '24h', count: resources['24HourSkip'] || 0 },
+                        ]
+                        const totalSkipsCount = skips.reduce((acc, s) => acc + (Number(s.count) || 0), 0)
 
                         const srvObj = instances.find(i => Number(i.id) === bot.server)
                         const serverName = srvObj ? `${__(srvObj.instanceLocaId)} ${srvObj.instanceName}` : `Server ${bot.server || '1'}`
@@ -202,11 +254,11 @@ export default function BotListingHome({ rows, usersStatus, ws, onSelectBot, __,
                                     flexWrap: 'wrap',
                                     alignItems: 'center',
                                     justifyContent: 'space-between',
-                                    gap: 2
+                                    gap: 2.5
                                 }}
                             >
-                                {/* Left Section: Account Identity & Server Info */}
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 220 }}>
+                                {/* Left Section: Account Identity & Server Realm */}
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, minWidth: 200 }}>
                                     <Box
                                         sx={{
                                             width: 44,
@@ -242,54 +294,79 @@ export default function BotListingHome({ rows, usersStatus, ws, onSelectBot, __,
                                                 }}
                                             />
                                         </Box>
-                                        <Typography variant="caption" sx={{ color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 1, mt: 0.3 }}>
+                                        <Typography variant="caption" sx={{ color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 0.8, mt: 0.2 }}>
                                             <span>Realm: <strong>{serverName}</strong></span>
                                             <span>•</span>
-                                            <span>Account ID: #{bot.id}</span>
-                                            {bot.externalEvent && <span>• <strong style={{ color: '#38bdf8' }}>Proxy</strong></span>}
+                                            <span>ID: #{bot.id}</span>
                                         </Typography>
                                     </Box>
                                 </Box>
 
-                                {/* Middle Section: Live Stats & Basic Account Info */}
-                                <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 3 }}>
-                                    {/* Active Modules info */}
-                                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                                        <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.68rem' }}>
-                                            Active Modules
-                                        </Typography>
-                                        <Typography variant="body2" sx={{ fontWeight: 700, color: '#e2e8f0', mt: 0.2 }}>
-                                            {enabledPluginsList.length} enabled
-                                        </Typography>
+                                {/* Middle Section 1: Coins & Rubies Economy (Current + /hr rate) */}
+                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
+                                    {/* Coins metric */}
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
+                                        <Box sx={{ width: 32, height: 32, borderRadius: '8px', bgcolor: 'rgba(245, 158, 11, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#f59e0b' }}>
+                                            <MonetizationOnIcon fontSize="small" />
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.68rem', fontWeight: 600, display: 'block', textTransform: 'uppercase' }}>
+                                                Coins
+                                            </Typography>
+                                            <Typography variant="body2" sx={{ fontWeight: 700, color: '#f8fafc', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                                                {formatNumber(currentCoins)}
+                                                <span style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+                                                    +{formatNumber(rates.coinsPerHour)}/h
+                                                </span>
+                                            </Typography>
+                                        </Box>
                                     </Box>
 
-                                    {/* Daily Attacks info */}
-                                    <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                                        <Typography variant="caption" sx={{ color: '#64748b', fontWeight: 600, textTransform: 'uppercase', fontSize: '0.68rem' }}>
-                                            Daily Attacks
-                                        </Typography>
-                                        <Typography variant="body2" sx={{ fontWeight: 700, color: status.attackDailyCount > 0 ? '#10b981' : '#cbd5e1', mt: 0.2 }}>
-                                            {status.attackDailyCount || 0}
-                                        </Typography>
+                                    {/* Rubies metric */}
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
+                                        <Box sx={{ width: 32, height: 32, borderRadius: '8px', bgcolor: 'rgba(239, 68, 68, 0.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#ef4444' }}>
+                                            <DiamondIcon fontSize="small" />
+                                        </Box>
+                                        <Box>
+                                            <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.68rem', fontWeight: 600, display: 'block', textTransform: 'uppercase' }}>
+                                                Rubies
+                                            </Typography>
+                                            <Typography variant="body2" sx={{ fontWeight: 700, color: '#f8fafc', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                                                {formatNumber(currentRubies)}
+                                                <span style={{ fontSize: '0.72rem', color: '#10b981', fontWeight: 600, display: 'flex', alignItems: 'center' }}>
+                                                    +{formatNumber(rates.rubiesPerHour)}/h
+                                                </span>
+                                            </Typography>
+                                        </Box>
                                     </Box>
+                                </Box>
 
-                                    {/* Active Plugins Chips */}
-                                    <Box sx={{ display: { xs: 'none', lg: 'flex' }, flexWrap: 'wrap', gap: 0.5, maxWidth: 320 }}>
-                                        {enabledPluginsList.slice(0, 3).map(p => (
-                                            <Chip
-                                                key={p}
-                                                label={__(p)}
-                                                size="small"
-                                                sx={{ height: 20, fontSize: '0.68rem', bgcolor: 'rgba(59, 130, 246, 0.1)', color: '#38bdf8' }}
-                                            />
-                                        ))}
-                                        {enabledPluginsList.length > 3 && (
-                                            <Chip
-                                                label={`+${enabledPluginsList.length - 3}`}
-                                                size="small"
-                                                sx={{ height: 20, fontSize: '0.68rem', bgcolor: 'rgba(255, 255, 255, 0.05)', color: '#94a3b8' }}
-                                            />
-                                        )}
+                                {/* Middle Section 2: Time Skips Overview (1m, 5m, 10m, 30m, 1h, 5h, 24h) */}
+                                <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', gap: 1.2, bgcolor: 'rgba(0,0,0,0.25)', p: 1, px: 1.5, borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                                    <Box sx={{ color: '#38bdf8', display: 'flex', alignItems: 'center' }}>
+                                        <AccessTimeIcon fontSize="small" />
+                                    </Box>
+                                    <Box>
+                                        <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.68rem', fontWeight: 600, display: 'block', textTransform: 'uppercase' }}>
+                                            Time Skips ({formatNumber(totalSkipsCount)})
+                                        </Typography>
+                                        <Box sx={{ display: 'flex', gap: 0.8, mt: 0.2 }}>
+                                            {skips.map(sk => (
+                                                <Tooltip key={sk.label} title={`${sk.label} Skips: ${sk.count}`}>
+                                                    <Chip
+                                                        label={`${sk.label}: ${formatNumber(sk.count)}`}
+                                                        size="small"
+                                                        sx={{
+                                                            height: 19,
+                                                            fontSize: '0.65rem',
+                                                            bgcolor: Number(sk.count) > 0 ? 'rgba(56, 189, 248, 0.12)' : 'rgba(255,255,255,0.04)',
+                                                            color: Number(sk.count) > 0 ? '#38bdf8' : '#64748b',
+                                                            fontWeight: 600
+                                                        }}
+                                                    />
+                                                </Tooltip>
+                                            ))}
+                                        </Box>
                                     </Box>
                                 </Box>
 
