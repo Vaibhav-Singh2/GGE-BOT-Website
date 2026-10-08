@@ -52,6 +52,7 @@ import ExtensionIcon from '@mui/icons-material/Extension'
 import FileDownloadIcon from '@mui/icons-material/FileDownload'
 import FileUploadIcon from '@mui/icons-material/FileUpload'
 import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder'
+import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import { ErrorType, ActionType, LogLevel } from "../types.js"
 
 // Sidebar Structure with Master "PLUGINS & MODULES" category at the top
@@ -214,7 +215,7 @@ const SIDEBAR_STRUCTURE = [
     }
 ]
 
-function PluginOptionField({ option, userPlugins, pluginKey, channels, __ }) {
+function PluginOptionField({ option, userPlugins, pluginKey, channels, __, onOptionChange }) {
     userPlugins[pluginKey] ??= {}
     const [val, setVal] = React.useState(userPlugins[pluginKey][option.key] ?? option.default)
 
@@ -225,6 +226,7 @@ function PluginOptionField({ option, userPlugins, pluginKey, channels, __ }) {
     const handleChange = newVal => {
         userPlugins[pluginKey][option.key] = newVal
         setVal(newVal)
+        if (onOptionChange) onOptionChange(pluginKey, option.key, newVal)
     }
 
     switch (option.type) {
@@ -327,9 +329,17 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
     const [savedTemplates, setSavedTemplates] = React.useState([])
     const [newTemplateName, setNewTemplateName] = React.useState('')
     const [feedbackMsg, setFeedbackMsg] = React.useState('')
-    const [refreshTrigger, setRefreshTrigger] = React.useState(0)
     const fileInputRef = React.useRef(null)
     const logContainerRef = React.useRef(null)
+
+    // Client-side staged draft configuration
+    const [draftPlugins, setDraftPlugins] = React.useState(() => JSON.parse(JSON.stringify(bot.plugins || {})))
+    const [savedBaseline, setSavedBaseline] = React.useState(() => JSON.stringify(bot.plugins || {}))
+
+    // Compare draft against baseline
+    const hasUnsavedChanges = React.useMemo(() => {
+        return JSON.stringify(draftPlugins) !== savedBaseline
+    }, [draftPlugins, savedBaseline])
 
     // Load saved templates from localStorage on mount
     React.useEffect(() => {
@@ -375,9 +385,19 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
         }
     }, [logs])
 
+    // Commit staged draft changes to backend
     const handleSave = () => {
+        bot.plugins = JSON.parse(JSON.stringify(draftPlugins))
         ws.send(JSON.stringify([ErrorType.Success, ActionType.SetUser, bot]))
-        setFeedbackMsg("Bot configuration saved successfully!")
+        setSavedBaseline(JSON.stringify(draftPlugins))
+        setFeedbackMsg("Bot configuration saved successfully to server!")
+    }
+
+    // Discard draft changes and reset back to last saved configuration
+    const handleReset = () => {
+        const reverted = JSON.parse(savedBaseline)
+        setDraftPlugins(reverted)
+        setFeedbackMsg("Changes reverted to last saved state.")
     }
 
     const handleToggleState = () => {
@@ -391,157 +411,177 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
         setCollapsedSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }))
     }
 
+    // Helper to update a plugin option in draft
+    const handleOptionChange = (pluginKey, optionKey, newVal) => {
+        setDraftPlugins(prev => {
+            const next = JSON.parse(JSON.stringify(prev))
+            next[pluginKey] ??= {}
+            next[pluginKey][optionKey] = newVal
+            return next
+        })
+    }
+
+    // Helper to toggle a plugin state in draft
+    const handlePluginToggle = (pluginKey, checked) => {
+        setDraftPlugins(prev => {
+            const next = JSON.parse(JSON.stringify(prev))
+            next[pluginKey] ??= {}
+            next[pluginKey].state = checked
+            return next
+        })
+    }
+
     /**
-     * Maps an EmpireAutomation template (e.g. ThorOP_template.json) to this bot's plugins schema
+     * Maps an EmpireAutomation template (e.g. ThorOP_template.json) to draftPlugins client-side WITHOUT saving to backend
      */
     const applyEmpireAutomationTemplate = (templateData, templateName = "Template") => {
-        bot.plugins ??= {}
         const bf = templateData.BotFunctions || {}
         const fsKeys = bf.FunctionSelection || {}
 
-        // 1. Direct plugin state mapping
-        const pluginMap = {
-            'TowerBot': 'attackBarron',
-            'StormBot': 'attackStormRI',
-            'FortressBot': 'attackFortress',
-            'CampBot': 'attackNomads',
-            'KahnBot': 'attackKhan',
-            'BerriGreen': 'attackBerimondInvasion',
-            'ToolBuild': 'toolBuild',
-            'ProduceComponents': 'produceComponents',
-            'CoinSpender': 'coinSpender',
-            'AutomaticFeast': 'feast',
-            'HospitalHealer': 'hospitalHealer',
-            'CastleDefense': 'troopDodge',
-            'MessageManagement': 'messageManagement',
-            'EquipmentManager': 'sellStoredEquipment',
-            'RecruitBot': 'recruit',
-            'AlertBot': 'discord'
-        }
+        setDraftPlugins(prev => {
+            const next = JSON.parse(JSON.stringify(prev))
 
-        // Enable or disable based on template
-        Object.entries(pluginMap).forEach(([tplKey, botKey]) => {
-            bot.plugins[botKey] ??= {}
-            if (fsKeys[tplKey] !== undefined) {
-                bot.plugins[botKey].state = Boolean(fsKeys[tplKey])
+            // 1. Direct plugin state mapping
+            const pluginMap = {
+                'TowerBot': 'attackBarron',
+                'StormBot': 'attackStormRI',
+                'FortressBot': 'attackFortress',
+                'CampBot': 'attackNomads',
+                'KahnBot': 'attackKhan',
+                'BerriGreen': 'attackBerimondInvasion',
+                'ToolBuild': 'toolBuild',
+                'ProduceComponents': 'produceComponents',
+                'CoinSpender': 'coinSpender',
+                'AutomaticFeast': 'feast',
+                'HospitalHealer': 'hospitalHealer',
+                'CastleDefense': 'troopDodge',
+                'MessageManagement': 'messageManagement',
+                'EquipmentManager': 'sellStoredEquipment',
+                'RecruitBot': 'recruit',
+                'AlertBot': 'discord'
             }
+
+            Object.entries(pluginMap).forEach(([tplKey, botKey]) => {
+                next[botKey] ??= {}
+                if (fsKeys[tplKey] !== undefined) {
+                    next[botKey].state = Boolean(fsKeys[tplKey])
+                }
+            })
+
+            if (templateData.plugins) {
+                Object.entries(templateData.plugins).forEach(([k, v]) => {
+                    next[k] = { ...next[k], ...v }
+                })
+            }
+
+            // 2. Castle Defense / troopDodge detailed params
+            if (bf.CastleDefense?.FunctionParameters) {
+                const p = bf.CastleDefense.FunctionParameters
+                next.troopDodge = {
+                    ...next.troopDodge,
+                    state: fsKeys.CastleDefense !== undefined ? Boolean(fsKeys.CastleDefense) : true,
+                    attackThresholdMinutes: p.AttackThresholdMinutes ?? 20,
+                    pullBackDelayMinutes: p.PullBackDelayMinutes ?? 20,
+                    autoPullBackTroops: p.AutoPullBackTroops ?? true,
+                    autoSafeCastleFromAllianceList: p.AutoSafeCastleFromAllianceList ?? true,
+                    troopAttackThreshold: p.TroopAttackThreshold ?? 300,
+                    minimumSendAmount: p.MinimumSendAmount ?? 100,
+                    openGateDurationHours: p.OpenGateDurationHours ?? 6,
+                    confirmRubySpendForOpenGate: p.ConfirmRubySpendForOpenGate ?? true,
+                    openGateWhenSendTroopsFails: p.OpenGateWhenSendTroopsFails ?? true,
+                    sendTroopsWhenOpenGateFails: p.SendTroopsWhenOpenGateFails ?? true,
+                    skipSendTroopsDuringPeaceProtection: p.SkipSendTroopsDuringPeaceProtection ?? true,
+                    outpostX: p.Main?.SendTroops?.SendToCastle?.x ? String(p.Main.SendTroops.SendToCastle.x) : '',
+                    outpostY: p.Main?.SendTroops?.SendToCastle?.y ? String(p.Main.SendTroops.SendToCastle.y) : ''
+                }
+            }
+
+            // 3. Coin Spender params
+            if (bf.CoinSpender?.FunctionParameters) {
+                const p = bf.CoinSpender.FunctionParameters
+                next.coinSpender = {
+                    ...next.coinSpender,
+                    state: fsKeys.CoinSpender !== undefined ? Boolean(fsKeys.CoinSpender) : true,
+                    coinThreshold: p.CoinThreshold ?? 2000000000,
+                    buyLadders: p.BuyLadders ?? true,
+                    buyMantlets: p.BuyMantlets ?? true
+                }
+            }
+
+            // 4. Hospital Healer params
+            if (bf.HospitalHealer?.FunctionParameters) {
+                const p = bf.HospitalHealer.FunctionParameters
+                next.hospitalHealer = {
+                    ...next.hospitalHealer,
+                    state: fsKeys.HospitalHealer !== undefined ? Boolean(fsKeys.HospitalHealer) : true,
+                    checkIntervalMinutes: p.CheckIntervalMinutes ?? 5,
+                    healCoinTroops: p.HealCoinTroops ?? true,
+                    discardRubyTroops: p.DiscardRubyTroops ?? true,
+                    requestAllianceHelp: p.RequestAllianceHelp ?? true
+                }
+            }
+
+            // 5. Equipment Manager / sellStoredEquipment params
+            if (bf.EquipmentManager?.FunctionParameters) {
+                const p = bf.EquipmentManager.FunctionParameters
+                next.sellStoredEquipment = {
+                    ...next.sellStoredEquipment,
+                    state: fsKeys.EquipmentManager !== undefined ? Boolean(fsKeys.EquipmentManager) : true,
+                    excludeTechnicusUpgrades: p.ExcludeTechnicusUpgrades ?? true,
+                    excludeGemSocketedEquipment: p.ExcludeGemSocketedEquipment ?? true,
+                    sellCommonEquipment: p.SellCommonEquipment ?? true,
+                    sellRareEquipment: p.SellRareEquipment ?? true,
+                    sellEpicEquipment: p.SellEpicEquipment ?? true,
+                    sellLegendaryEquipment: p.SellLegendaryEquipment ?? true
+                }
+            }
+
+            // 6. Discord webhooks
+            if (templateData.discord?.webhookUrl) {
+                next.discord = {
+                    ...next.discord,
+                    state: Boolean(templateData.discord.webhookEnabled),
+                    webhook: templateData.discord.webhookUrl
+                }
+            }
+
+            return next
         })
 
-        // Also if raw plugins object is provided in exported json
-        if (templateData.plugins) {
-            Object.entries(templateData.plugins).forEach(([k, v]) => {
-                bot.plugins[k] = { ...bot.plugins[k], ...v }
-            })
-        }
-
-        // 2. Castle Defense / troopDodge detailed params
-        if (bf.CastleDefense?.FunctionParameters) {
-            const p = bf.CastleDefense.FunctionParameters
-            bot.plugins.troopDodge = {
-                ...bot.plugins.troopDodge,
-                state: fsKeys.CastleDefense !== undefined ? Boolean(fsKeys.CastleDefense) : true,
-                attackThresholdMinutes: p.AttackThresholdMinutes ?? 20,
-                pullBackDelayMinutes: p.PullBackDelayMinutes ?? 20,
-                autoPullBackTroops: p.AutoPullBackTroops ?? true,
-                autoSafeCastleFromAllianceList: p.AutoSafeCastleFromAllianceList ?? true,
-                troopAttackThreshold: p.TroopAttackThreshold ?? 300,
-                minimumSendAmount: p.MinimumSendAmount ?? 100,
-                openGateDurationHours: p.OpenGateDurationHours ?? 6,
-                confirmRubySpendForOpenGate: p.ConfirmRubySpendForOpenGate ?? true,
-                openGateWhenSendTroopsFails: p.OpenGateWhenSendTroopsFails ?? true,
-                sendTroopsWhenOpenGateFails: p.SendTroopsWhenOpenGateFails ?? true,
-                skipSendTroopsDuringPeaceProtection: p.SkipSendTroopsDuringPeaceProtection ?? true,
-                outpostX: p.Main?.SendTroops?.SendToCastle?.x ? String(p.Main.SendTroops.SendToCastle.x) : '',
-                outpostY: p.Main?.SendTroops?.SendToCastle?.y ? String(p.Main.SendTroops.SendToCastle.y) : ''
-            }
-        }
-
-        // 3. Coin Spender params
-        if (bf.CoinSpender?.FunctionParameters) {
-            const p = bf.CoinSpender.FunctionParameters
-            bot.plugins.coinSpender = {
-                ...bot.plugins.coinSpender,
-                state: fsKeys.CoinSpender !== undefined ? Boolean(fsKeys.CoinSpender) : true,
-                coinThreshold: p.CoinThreshold ?? 2000000000,
-                buyLadders: p.BuyLadders ?? true,
-                buyMantlets: p.BuyMantlets ?? true
-            }
-        }
-
-        // 4. Hospital Healer params
-        if (bf.HospitalHealer?.FunctionParameters) {
-            const p = bf.HospitalHealer.FunctionParameters
-            bot.plugins.hospitalHealer = {
-                ...bot.plugins.hospitalHealer,
-                state: fsKeys.HospitalHealer !== undefined ? Boolean(fsKeys.HospitalHealer) : true,
-                checkIntervalMinutes: p.CheckIntervalMinutes ?? 5,
-                healCoinTroops: p.HealCoinTroops ?? true,
-                discardRubyTroops: p.DiscardRubyTroops ?? true,
-                requestAllianceHelp: p.RequestAllianceHelp ?? true
-            }
-        }
-
-        // 5. Equipment Manager / sellStoredEquipment params
-        if (bf.EquipmentManager?.FunctionParameters) {
-            const p = bf.EquipmentManager.FunctionParameters
-            bot.plugins.sellStoredEquipment = {
-                ...bot.plugins.sellStoredEquipment,
-                state: fsKeys.EquipmentManager !== undefined ? Boolean(fsKeys.EquipmentManager) : true,
-                excludeTechnicusUpgrades: p.ExcludeTechnicusUpgrades ?? true,
-                excludeGemSocketedEquipment: p.ExcludeGemSocketedEquipment ?? true,
-                sellCommonEquipment: p.SellCommonEquipment ?? true,
-                sellRareEquipment: p.SellRareEquipment ?? true,
-                sellEpicEquipment: p.SellEpicEquipment ?? true,
-                sellLegendaryEquipment: p.SellLegendaryEquipment ?? true
-            }
-        }
-
-        // 6. Discord webhooks
-        if (templateData.discord?.webhookUrl) {
-            bot.plugins.discord = {
-                ...bot.plugins.discord,
-                state: Boolean(templateData.discord.webhookEnabled),
-                webhook: templateData.discord.webhookUrl
-            }
-        }
-
-        // Save immediately to backend
-        ws.send(JSON.stringify([ErrorType.Success, ActionType.SetUser, bot]))
-        setRefreshTrigger(prev => prev + 1)
-        setFeedbackMsg(`Template "${templateName}" applied successfully!`)
+        setFeedbackMsg(`Template "${templateName}" applied to draft. Click Save to persist changes!`)
     }
 
-    // Export current bot settings as downloadable JSON template
+    // Export current draft settings as downloadable JSON template
     const handleDownloadTemplate = () => {
         const payload = {
             name: `${bot.name}_export`,
             createdAt: new Date().toISOString(),
             BotFunctions: {
                 FunctionSelection: {
-                    TowerBot: Boolean(bot.plugins.attackBarron?.state),
-                    StormBot: Boolean(bot.plugins.attackStormRI?.state),
-                    FortressBot: Boolean(bot.plugins.attackFortress?.state),
-                    CampBot: Boolean(bot.plugins.attackNomads?.state),
-                    KahnBot: Boolean(bot.plugins.attackKhan?.state),
-                    BerriGreen: Boolean(bot.plugins.attackBerimondInvasion?.state),
-                    ToolBuild: Boolean(bot.plugins.toolBuild?.state),
-                    ProduceComponents: Boolean(bot.plugins.produceComponents?.state),
-                    CoinSpender: Boolean(bot.plugins.coinSpender?.state),
-                    AutomaticFeast: Boolean(bot.plugins.feast?.state),
-                    HospitalHealer: Boolean(bot.plugins.hospitalHealer?.state),
-                    CastleDefense: Boolean(bot.plugins.troopDodge?.state),
-                    MessageManagement: Boolean(bot.plugins.messageManagement?.state),
-                    EquipmentManager: Boolean(bot.plugins.sellStoredEquipment?.state),
-                    RecruitBot: Boolean(bot.plugins.recruit?.state),
-                    AlertBot: Boolean(bot.plugins.discord?.state)
+                    TowerBot: Boolean(draftPlugins.attackBarron?.state),
+                    StormBot: Boolean(draftPlugins.attackStormRI?.state),
+                    FortressBot: Boolean(draftPlugins.attackFortress?.state),
+                    CampBot: Boolean(draftPlugins.attackNomads?.state),
+                    KahnBot: Boolean(draftPlugins.attackKhan?.state),
+                    BerriGreen: Boolean(draftPlugins.attackBerimondInvasion?.state),
+                    ToolBuild: Boolean(draftPlugins.toolBuild?.state),
+                    ProduceComponents: Boolean(draftPlugins.produceComponents?.state),
+                    CoinSpender: Boolean(draftPlugins.coinSpender?.state),
+                    AutomaticFeast: Boolean(draftPlugins.feast?.state),
+                    HospitalHealer: Boolean(draftPlugins.hospitalHealer?.state),
+                    CastleDefense: Boolean(draftPlugins.troopDodge?.state),
+                    MessageManagement: Boolean(draftPlugins.messageManagement?.state),
+                    EquipmentManager: Boolean(draftPlugins.sellStoredEquipment?.state),
+                    RecruitBot: Boolean(draftPlugins.recruit?.state),
+                    AlertBot: Boolean(draftPlugins.discord?.state)
                 },
-                CastleDefense: { FunctionParameters: bot.plugins.troopDodge || {} },
-                CoinSpender: { FunctionParameters: bot.plugins.coinSpender || {} },
-                HospitalHealer: { FunctionParameters: bot.plugins.hospitalHealer || {} },
-                EquipmentManager: { FunctionParameters: bot.plugins.sellStoredEquipment || {} },
-                MessageManagement: { FunctionParameters: bot.plugins.messageManagement || {} }
+                CastleDefense: { FunctionParameters: draftPlugins.troopDodge || {} },
+                CoinSpender: { FunctionParameters: draftPlugins.coinSpender || {} },
+                HospitalHealer: { FunctionParameters: draftPlugins.hospitalHealer || {} },
+                EquipmentManager: { FunctionParameters: draftPlugins.sellStoredEquipment || {} },
+                MessageManagement: { FunctionParameters: draftPlugins.messageManagement || {} }
             },
-            plugins: bot.plugins
+            plugins: draftPlugins
         }
 
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload, null, 2))
@@ -572,14 +612,14 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
         e.target.value = ''
     }
 
-    // Save current profile to local templates list
+    // Save current draft to local templates presets
     const handleSaveTemplatePreset = () => {
         const name = newTemplateName.trim() || `Profile_${Date.now()}`
         const newPreset = {
             name,
             date: new Date().toLocaleDateString(),
             data: {
-                plugins: JSON.parse(JSON.stringify(bot.plugins || {}))
+                plugins: JSON.parse(JSON.stringify(draftPlugins))
             }
         }
         const updated = [...savedTemplates, newPreset]
@@ -597,7 +637,7 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
 
     // Filter which sidebar categories/items should display:
     // 1. "PLUGINS & MANAGER" is ALWAYS visible.
-    // 2. An item is visible ONLY if at least one matching plugin is ENABLED in bot.plugins.
+    // 2. An item is visible ONLY if at least one matching plugin is ENABLED in draftPlugins.
     const visibleSidebarStructure = SIDEBAR_STRUCTURE.map(section => {
         if (section.id === 'plugins_manager') return section
 
@@ -607,7 +647,7 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
             return plugins.some(p => {
                 const k = p.key.toLowerCase()
                 const matches = item.match.some(m => k.includes(m))
-                return matches && Boolean(bot.plugins[p.key]?.state)
+                return matches && Boolean(draftPlugins[p.key]?.state)
             })
         })
 
@@ -742,13 +782,41 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                         {isRunning ? "Stop Bot" : "Start Bot"}
                     </Button>
                     <Button
+                        variant="outlined"
+                        size="small"
+                        disabled={!hasUnsavedChanges}
+                        startIcon={<RestartAltIcon />}
+                        onClick={handleReset}
+                        sx={{
+                            color: hasUnsavedChanges ? '#f87171' : '#64748b',
+                            borderColor: hasUnsavedChanges ? 'rgba(239, 68, 68, 0.4)' : 'rgba(255, 255, 255, 0.08)',
+                            textTransform: 'none',
+                            borderRadius: '6px',
+                            px: 1.8,
+                            '&:hover': {
+                                borderColor: '#ef4444',
+                                bgcolor: 'rgba(239, 68, 68, 0.08)'
+                            }
+                        }}
+                    >
+                        Reset
+                    </Button>
+                    <Button
                         variant="contained"
                         size="small"
                         startIcon={<SaveIcon />}
                         onClick={handleSave}
-                        sx={{ bgcolor: '#3b82f6', fontWeight: 600, textTransform: 'none', borderRadius: '6px', px: 2.5, '&:hover': { bgcolor: '#2563eb' } }}
+                        sx={{
+                            bgcolor: hasUnsavedChanges ? '#f59e0b' : '#3b82f6',
+                            fontWeight: 600,
+                            textTransform: 'none',
+                            borderRadius: '6px',
+                            px: 2.5,
+                            boxShadow: hasUnsavedChanges ? '0 0 12px rgba(245, 158, 11, 0.4)' : 'none',
+                            '&:hover': { bgcolor: hasUnsavedChanges ? '#d97706' : '#2563eb' }
+                        }}
                     >
-                        Save
+                        {hasUnsavedChanges ? "Save Changes *" : "Save"}
                     </Button>
                 </Box>
             </Card>
@@ -912,7 +980,7 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                                 if (subCategories.length === 0) return null
 
                                 const totalPlugins = subCategories.reduce((acc, sub) => acc + sub.plugins.length, 0)
-                                const activeCount = subCategories.reduce((acc, sub) => acc + sub.plugins.filter(p => Boolean(bot.plugins[p.key]?.state)).length, 0)
+                                const activeCount = subCategories.reduce((acc, sub) => acc + sub.plugins.filter(p => Boolean(draftPlugins[p.key]?.state)).length, 0)
 
                                 return (
                                     <Box key={section.id} sx={{ mb: 3.5 }}>
@@ -937,7 +1005,7 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                                         {/* Sub-Categories */}
                                         <Box sx={{ pl: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
                                             {subCategories.map(sub => {
-                                                const subActiveCount = sub.plugins.filter(p => Boolean(bot.plugins[p.key]?.state)).length
+                                                const subActiveCount = sub.plugins.filter(p => Boolean(draftPlugins[p.key]?.state)).length
                                                 return (
                                                     <Box key={sub.id} sx={{ bgcolor: 'rgba(255, 255, 255, 0.015)', p: 1.5, borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
                                                         {/* Sub-Category Subheader */}
@@ -966,8 +1034,7 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                                                         {/* Plugin Rows inside Sub-Category */}
                                                         <Box sx={{ display: 'flex', flexDirection: 'column' }}>
                                                             {sub.plugins.map(plugin => {
-                                                                bot.plugins[plugin.key] ??= {}
-                                                                const isPluginActive = Boolean(bot.plugins[plugin.key]?.state)
+                                                                const isPluginActive = Boolean(draftPlugins[plugin.key]?.state)
                                                                 return (
                                                                     <Box
                                                                         key={plugin.key}
@@ -1011,11 +1078,7 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                                                                             <Switch
                                                                                 size="small"
                                                                                 checked={isPluginActive}
-                                                                                onChange={(_, checked) => {
-                                                                                    bot.plugins[plugin.key].state = checked
-                                                                                    ws.send(JSON.stringify([ErrorType.Success, ActionType.SetUser, bot]))
-                                                                                    setRefreshTrigger(prev => prev + 1)
-                                                                                }}
+                                                                                onChange={(_, checked) => handlePluginToggle(plugin.key, checked)}
                                                                                 sx={{
                                                                                     '& .MuiSwitch-switchBase.Mui-checked': {
                                                                                         color: '#38bdf8',
@@ -1069,8 +1132,7 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                                 </Card>
                             ) : (
                                 matchingPlugins.map(plugin => {
-                                    bot.plugins[plugin.key] ??= {}
-                                    const isEnabled = Boolean(bot.plugins[plugin.key]?.state)
+                                    const isEnabled = Boolean(draftPlugins[plugin.key]?.state)
 
                                     return (
                                         <SectionCard
@@ -1085,11 +1147,7 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                                                 </Typography>
                                                 <Switch
                                                     checked={isEnabled}
-                                                    onChange={(_, checked) => {
-                                                        bot.plugins[plugin.key].state = checked
-                                                        ws.send(JSON.stringify([ErrorType.Success, ActionType.SetUser, bot]))
-                                                        setRefreshTrigger(prev => prev + 1)
-                                                    }}
+                                                    onChange={(_, checked) => handlePluginToggle(plugin.key, checked)}
                                                     sx={{
                                                         '& .MuiSwitch-switchBase.Mui-checked': {
                                                             color: '#3b82f6',
@@ -1104,12 +1162,13 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                                                 <Box sx={{ bgcolor: '#0f151e', p: 2, borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }}>
                                                     {plugin.pluginOptions.map((opt, idx) => (
                                                         <PluginOptionField
-                                                            key={`${plugin.key}-${idx}-${refreshTrigger}`}
+                                                            key={`${plugin.key}-${idx}`}
                                                             option={opt}
-                                                            userPlugins={bot.plugins}
+                                                            userPlugins={draftPlugins}
                                                             pluginKey={plugin.key}
                                                             channels={channels}
                                                             __={__}
+                                                            onOptionChange={handleOptionChange}
                                                         />
                                                     ))}
                                                 </Box>
