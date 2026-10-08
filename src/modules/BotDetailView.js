@@ -522,9 +522,7 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
 
             // 1. Direct plugin state mapping
             const pluginMap = {
-                'TowerBot': 'attackBarron',
                 'StormBot': 'attackStormRI',
-                'FortressBot': 'attackFortress',
                 'CampBot': 'attackNomads',
                 'KahnBot': 'attackKhan',
                 'BerriGreen': 'attackBerimondInvasion',
@@ -546,6 +544,24 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                     next[botKey].state = Boolean(fsKeys[tplKey])
                 }
             })
+
+            // Multi-kingdom plugin support (TowerBot / Robber Baron)
+            if (fsKeys.TowerBot !== undefined) {
+                const towerState = Boolean(fsKeys.TowerBot)
+                plugins.filter(p => p.key.toLowerCase().includes('barron')).forEach(p => {
+                    next[p.key] ??= {}
+                    next[p.key].state = towerState
+                })
+            }
+
+            // Multi-kingdom plugin support (FortressBot / Fortresses)
+            if (fsKeys.FortressBot !== undefined) {
+                const fortressState = Boolean(fsKeys.FortressBot)
+                plugins.filter(p => p.key.toLowerCase().includes('fortress')).forEach(p => {
+                    next[p.key] ??= {}
+                    next[p.key].state = fortressState
+                })
+            }
 
             if (templateData.plugins) {
                 Object.entries(templateData.plugins).forEach(([k, v]) => {
@@ -637,9 +653,9 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
             createdAt: new Date().toISOString(),
             BotFunctions: {
                 FunctionSelection: {
-                    TowerBot: Boolean(draftPlugins.attackBarron?.state),
+                    TowerBot: plugins.filter(p => p.key.toLowerCase().includes('barron')).some(p => Boolean(draftPlugins[p.key]?.state)),
                     StormBot: Boolean(draftPlugins.attackStormRI?.state),
-                    FortressBot: Boolean(draftPlugins.attackFortress?.state),
+                    FortressBot: plugins.filter(p => p.key.toLowerCase().includes('fortress')).some(p => Boolean(draftPlugins[p.key]?.state)),
                     CampBot: Boolean(draftPlugins.attackNomads?.state),
                     KahnBot: Boolean(draftPlugins.attackKhan?.state),
                     BerriGreen: Boolean(draftPlugins.attackBerimondInvasion?.state),
@@ -1058,9 +1074,20 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
 
                                 if (subCategories.length === 0) return null
 
-                                const totalPlugins = subCategories.reduce((acc, sub) => acc + (sub.id === 'barrons' ? 1 : sub.plugins.length), 0)
+                                const UNIFIED_SUB_CATEGORIES = {
+                                    barrons: {
+                                        title: 'Robber Baron Castles (TowerBot)',
+                                        description: 'Automated attacks against Robber Baron castles across all kingdoms. Configure specific kingdoms in the Robber Baron section.'
+                                    },
+                                    fortress_bot: {
+                                        title: 'Fortress Bot (Glacier, Sands, Peaks)',
+                                        description: 'Automated attacks against kingdom fortresses. Configure specific kingdoms in the Fortress Bot section.'
+                                    }
+                                }
+
+                                const totalPlugins = subCategories.reduce((acc, sub) => acc + (UNIFIED_SUB_CATEGORIES[sub.id] ? 1 : sub.plugins.length), 0)
                                 const activeCount = subCategories.reduce((acc, sub) => {
-                                    if (sub.id === 'barrons') {
+                                    if (UNIFIED_SUB_CATEGORIES[sub.id]) {
                                         const hasAny = sub.plugins.some(p => Boolean(draftPlugins[p.key]?.state))
                                         return acc + (hasAny ? 1 : 0)
                                     }
@@ -1090,11 +1117,11 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                                         {/* Sub-Categories */}
                                         <Box sx={{ pl: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
                                             {subCategories.map(sub => {
-                                                const isBarronsSub = sub.id === 'barrons'
-                                                const subActiveCount = isBarronsSub
+                                                const unifiedConfig = UNIFIED_SUB_CATEGORIES[sub.id]
+                                                const subActiveCount = unifiedConfig
                                                     ? (sub.plugins.some(p => Boolean(draftPlugins[p.key]?.state)) ? 1 : 0)
                                                     : sub.plugins.filter(p => Boolean(draftPlugins[p.key]?.state)).length
-                                                const subTotalCount = isBarronsSub ? 1 : sub.plugins.length
+                                                const subTotalCount = unifiedConfig ? 1 : sub.plugins.length
 
                                                 return (
                                                     <Box key={sub.id} sx={{ bgcolor: 'rgba(255, 255, 255, 0.015)', p: 1.5, borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
@@ -1123,13 +1150,13 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
 
                                                         {/* Plugin Rows inside Sub-Category */}
                                                         <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                                                            {isBarronsSub ? (
-                                                                // Single unified switch for Robber Barron Castles
+                                                            {unifiedConfig ? (
+                                                                // Single unified switch for multi-kingdom categories (e.g. Robber Baron, Fortress)
                                                                 (() => {
                                                                     const isAnyActive = sub.plugins.some(p => Boolean(draftPlugins[p.key]?.state))
                                                                     return (
                                                                         <Box
-                                                                            key="unified_barrons"
+                                                                            key={`unified_${sub.id}`}
                                                                             sx={{
                                                                                 display: 'flex',
                                                                                 alignItems: 'center',
@@ -1146,10 +1173,10 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                                                                         >
                                                                             <Box sx={{ pr: 2 }}>
                                                                                 <Typography sx={{ fontSize: '0.84rem', fontWeight: 600, color: isAnyActive ? '#f8fafc' : '#94a3b8' }}>
-                                                                                    Robber Baron Castles (TowerBot)
+                                                                                    {unifiedConfig.title}
                                                                                 </Typography>
                                                                                 <Typography sx={{ fontSize: '0.72rem', color: '#64748b', display: 'block', mt: 0.1 }}>
-                                                                                    Automated attacks against Robber Baron castles across all kingdoms. Configure specific kingdoms in the Robber Baron section.
+                                                                                    {unifiedConfig.description}
                                                                                 </Typography>
                                                                             </Box>
 
