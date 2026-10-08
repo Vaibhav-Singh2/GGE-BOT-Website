@@ -284,15 +284,26 @@ export default function BotListingHome({ rows, usersStatus, ws, onSelectBot, __,
 
                         // Time Skips breakdown
                         const skips = [
-                            { label: '1m', count: resources['1MinSkip'] || 0 },
-                            { label: '5m', count: resources['5MinSkip'] || 0 },
-                            { label: '10m', count: resources['10MinSkip'] || 0 },
-                            { label: '30m', count: resources['30MinSkip'] || 0 },
-                            { label: '1h', count: resources['60MinSkip'] || 0 },
-                            { label: '5h', count: resources['5HourSkip'] || 0 },
-                            { label: '24h', count: resources['24HourSkip'] || 0 },
+                            { label: '1m', resKey: '1MinSkip', count: resources['1MinSkip'] || 0 },
+                            { label: '5m', resKey: '5MinSkip', count: resources['5MinSkip'] || 0 },
+                            { label: '10m', resKey: '10MinSkip', count: resources['10MinSkip'] || 0 },
+                            { label: '30m', resKey: '30MinSkip', count: resources['30MinSkip'] || 0 },
+                            { label: '1h', resKey: '60MinSkip', count: resources['60MinSkip'] || 0 },
+                            { label: '5h', resKey: '5HourSkip', count: resources['5HourSkip'] || 0 },
+                            { label: '24h', resKey: '24HourSkip', count: resources['24HourSkip'] || 0 },
                         ]
                         const totalSkipsCount = skips.reduce((acc, s) => acc + (Number(s.count) || 0), 0)
+
+                        const skipsUsed = isRunning ? Number(status.skipsUsed || 0) : 0
+                        const skipsUsedByType = isRunning ? (status.skipsUsedByType || {}) : {}
+                        let skipsUsedPerHour = 0
+                        if (isRunning) {
+                            if (status.skipsUsedPerHour !== undefined && status.skipsUsedPerHour !== 0) {
+                                skipsUsedPerHour = Number(status.skipsUsedPerHour)
+                            } else if (elapsedHours >= 0.004 && skipsUsed > 0) {
+                                skipsUsedPerHour = Math.round(skipsUsed / elapsedHours)
+                            }
+                        }
 
                         const srvObj = instances.find(i => Number(i.id) === bot.server)
                         const serverName = srvObj ? `${__(srvObj.instanceLocaId)} ${srvObj.instanceName}` : `Server ${bot.server || '1'}`
@@ -453,31 +464,62 @@ export default function BotListingHome({ rows, usersStatus, ws, onSelectBot, __,
                                     </Box>
                                 </Box>
 
-                                {/* Middle Section 2: Time Skips Overview (1m, 5m, 10m, 30m, 1h, 5h, 24h) */}
+                                {/* Middle Section 2: Time Skips Overview (1m, 5m, 10m, 30m, 1h, 5h, 24h) + Usage counters */}
                                 <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', gap: 1.2, bgcolor: 'rgba(0,0,0,0.25)', p: 1, px: 1.5, borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
                                     <Box sx={{ color: '#38bdf8', display: 'flex', alignItems: 'center' }}>
                                         <AccessTimeIcon fontSize="small" />
                                     </Box>
                                     <Box>
-                                        <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.68rem', fontWeight: 600, display: 'block', textTransform: 'uppercase' }}>
-                                            Time Skips ({formatNumber(totalSkipsCount)})
-                                        </Typography>
-                                        <Box sx={{ display: 'flex', gap: 0.8, mt: 0.2 }}>
-                                            {skips.map(sk => (
-                                                <Tooltip key={sk.label} title={`${sk.label} Skips: ${sk.count}`}>
-                                                    <Chip
-                                                        label={`${sk.label}: ${formatNumber(sk.count)}`}
-                                                        size="small"
-                                                        sx={{
-                                                            height: 19,
-                                                            fontSize: '0.65rem',
-                                                            bgcolor: Number(sk.count) > 0 ? 'rgba(56, 189, 248, 0.12)' : 'rgba(255,255,255,0.04)',
-                                                            color: Number(sk.count) > 0 ? '#38bdf8' : '#64748b',
-                                                            fontWeight: 600
-                                                        }}
-                                                    />
-                                                </Tooltip>
-                                            ))}
+                                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5 }}>
+                                            <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.68rem', fontWeight: 600, display: 'block', textTransform: 'uppercase' }}>
+                                                Time Skips ({formatNumber(totalSkipsCount)})
+                                            </Typography>
+                                            <Tooltip title={`Session Skips Used: ${skipsUsed.toLocaleString()} skips | Usage Rate: ${skipsUsedPerHour.toLocaleString()}/h`}>
+                                                <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.6 }}>
+                                                    <span style={{ fontSize: '0.7rem', color: skipsUsed > 0 ? '#f59e0b' : '#64748b', fontWeight: 600 }}>
+                                                        {skipsUsedPerHour}/h
+                                                    </span>
+                                                    <span style={{
+                                                        fontSize: '0.65rem',
+                                                        color: skipsUsed > 0 ? '#fbbf24' : '#64748b',
+                                                        fontWeight: 700,
+                                                        bgcolor: skipsUsed > 0 ? 'rgba(245, 158, 11, 0.15)' : 'rgba(255,255,255,0.04)',
+                                                        px: 0.6,
+                                                        py: 0.05,
+                                                        borderRadius: '3px',
+                                                        border: '1px solid',
+                                                        borderColor: skipsUsed > 0 ? 'rgba(245, 158, 11, 0.3)' : 'transparent'
+                                                    }}>
+                                                        {skipsUsed} used
+                                                    </span>
+                                                </Box>
+                                            </Tooltip>
+                                        </Box>
+                                        <Box sx={{ display: 'flex', gap: 0.8, mt: 0.3 }}>
+                                            {skips.map(sk => {
+                                                const used = skipsUsedByType[sk.resKey] || 0
+                                                return (
+                                                    <Tooltip
+                                                        key={sk.label}
+                                                        title={`${sk.label} Skips: ${Number(sk.count).toLocaleString()}${used > 0 ? ` (${used} used this session)` : ''}`}
+                                                    >
+                                                        <Chip
+                                                            label={used > 0 ? `${sk.label}: ${formatNumber(sk.count)} (-${used})` : `${sk.label}: ${formatNumber(sk.count)}`}
+                                                            size="small"
+                                                            sx={{
+                                                                height: 19,
+                                                                fontSize: '0.65rem',
+                                                                bgcolor: Number(sk.count) > 0 ? 'rgba(56, 189, 248, 0.12)' : 'rgba(255,255,255,0.04)',
+                                                                color: Number(sk.count) > 0 ? '#38bdf8' : '#64748b',
+                                                                borderColor: used > 0 ? 'rgba(245, 158, 11, 0.4)' : 'transparent',
+                                                                borderWidth: used > 0 ? '1px' : '0px',
+                                                                borderStyle: 'solid',
+                                                                fontWeight: 600
+                                                            }}
+                                                        />
+                                                    </Tooltip>
+                                                )
+                                            })}
                                         </Box>
                                     </Box>
                                 </Box>
