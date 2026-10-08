@@ -24,7 +24,8 @@ import {
     FormControl,
     InputLabel,
     Select,
-    MenuItem
+    MenuItem,
+    Autocomplete
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
@@ -58,6 +59,9 @@ import FileUploadIcon from '@mui/icons-material/FileUpload'
 import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import ManageAccountsIcon from '@mui/icons-material/ManageAccounts'
+import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
+import AttackTemplatesView from './AttackTemplatesView.js'
+import unitsCatalog from '../data/unitsCatalog.json'
 import { ErrorType, ActionType, LogLevel } from "../types.js"
 import settings from '../settings.json'
 
@@ -121,6 +125,12 @@ const SIDEBAR_STRUCTURE = [
         id: 'attacks',
         label: 'ATTACKS & FARMING',
         items: [
+            {
+                id: 'attack_templates',
+                label: 'Attack Templates',
+                icon: <AutoFixHighIcon fontSize="small" />,
+                isAttackTemplates: true
+            },
             {
                 id: 'barrons',
                 label: 'Robber Baron Castles',
@@ -284,7 +294,82 @@ function PluginOptionField({ option, userPlugins, pluginKey, channels, __, onOpt
                     {__(option.key)}
                 </Typography>
             )
-        case "Text":
+        case "Select":
+            return (
+                <Box sx={{ mb: 1.5 }}>
+                    <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mb: 0.5 }}>
+                        {__(option.key)}
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                        <Select
+                            value={val ?? option.default ?? (option.selection?.[0] || "")}
+                            onChange={e => handleChange(e.target.value)}
+                            sx={{
+                                bgcolor: '#0f151e',
+                                borderRadius: '6px',
+                                fontSize: '0.82rem',
+                                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' }
+                            }}
+                        >
+                            {(option.selection || []).map((item, idx) => (
+                                <MenuItem key={idx} value={String(idx)}>
+                                    {__(item)}
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+                </Box>
+            )
+        case "Text": {
+            // Enhanced troop selector for troopIDs (e.g. in Berimond Kingdom)
+            if (option.key === 'troopIDs') {
+                const currentIds = String(val || "")
+                    .split(/[\s,]+/)
+                    .filter(Boolean)
+                    .map(Number)
+                    .filter(id => Number.isInteger(id) && id > 0)
+                const selectedUnits = currentIds.map(id => unitsCatalog.find(u => u.id === id) || { id, name: `Unit #${id}` })
+
+                return (
+                    <Box sx={{ mb: 1.5 }}>
+                        <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mb: 0.5 }}>
+                            {__(option.key)} (Troop Priority Picker)
+                        </Typography>
+                        <Autocomplete
+                            multiple
+                            size="small"
+                            options={unitsCatalog.filter(u => !u.isTool)}
+                            getOptionLabel={opt => `${opt.name} (#${opt.id})`}
+                            value={selectedUnits}
+                            isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                            onChange={(_, newValues) => {
+                                const newIdStr = newValues.map(v => v.id).join(', ')
+                                handleChange(newIdStr)
+                            }}
+                            renderInput={params => (
+                                <TextField
+                                    {...params}
+                                    placeholder="Search and select troops..."
+                                    helperText="Select troops in priority order. Underlying IDs are saved automatically."
+                                    sx={{
+                                        '& .MuiOutlinedInput-root': {
+                                            bgcolor: '#0f151e',
+                                            borderRadius: '6px',
+                                            fontSize: '0.82rem',
+                                            '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' }
+                                        },
+                                        '& .MuiFormHelperText-root': {
+                                            color: '#64748b',
+                                            fontSize: '0.7rem'
+                                        }
+                                    }}
+                                />
+                            )}
+                        />
+                    </Box>
+                )
+            }
+
             return (
                 <Box sx={{ mb: 1.5 }}>
                     <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mb: 0.5 }}>
@@ -306,6 +391,7 @@ function PluginOptionField({ option, userPlugins, pluginKey, channels, __, onOpt
                     />
                 </Box>
             )
+        }
         case "Number":
             return (
                 <Box sx={{ mb: 1.5 }}>
@@ -737,6 +823,7 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
         if (section.id === 'account_manager' || section.id === 'plugins_manager') return section
 
         const visibleItems = section.items.filter(item => {
+            if (item.isAttackTemplates) return true
             if (!item.match) return false
             // Check if any matching plugin is enabled
             return plugins.some(p => {
@@ -768,7 +855,7 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
     }
 
     // Matching plugins for active item
-    const matchingPlugins = activeItemObj.isMasterManager
+    const matchingPlugins = (activeItemObj.isMasterManager || activeItemObj.isAttackTemplates || activeItemObj.isAccountConfig)
         ? []
         : plugins.filter(p => {
             if (!activeItemObj || !activeItemObj.match) return false
@@ -1385,6 +1472,9 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                                 </Box>
                             </SectionCard>
                         </Box>
+                    ) : activeItemObj.isAttackTemplates ? (
+                        /* Dedicated Attack Templates & Wave Builder View */
+                        <AttackTemplatesView bot={bot} />
                     ) : (
                         /* Module Details and Configuration Form */
                         <Box>
