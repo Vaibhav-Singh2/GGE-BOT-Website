@@ -895,29 +895,34 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                                 </Button>
                             </Box>
 
-                            {/* Grouped by Category with clean row switches (no chunky boxes) */}
+                            {/* Grouped hierarchically by Section and Sub-Categories */}
                             {SIDEBAR_STRUCTURE.filter(sec => sec.id !== 'plugins_manager').map(section => {
-                                // Find all plugins that match any item in this section
-                                const sectionPlugins = plugins.filter(plugin => {
-                                    const k = plugin.key.toLowerCase()
-                                    return section.items.some(item => item.match && item.match.some(m => k.includes(m)))
-                                })
+                                // Collect all items that have matching plugins
+                                const subCategories = section.items.map(item => {
+                                    const itemPlugins = plugins.filter(plugin => {
+                                        const k = plugin.key.toLowerCase()
+                                        return item.match && item.match.some(m => k.includes(m))
+                                    })
+                                    return {
+                                        ...item,
+                                        plugins: itemPlugins
+                                    }
+                                }).filter(item => item.plugins.length > 0)
 
-                                if (sectionPlugins.length === 0) return null
+                                if (subCategories.length === 0) return null
 
-                                const activeCount = sectionPlugins.filter(p => Boolean(bot.plugins[p.key]?.state)).length
+                                const totalPlugins = subCategories.reduce((acc, sub) => acc + sub.plugins.length, 0)
+                                const activeCount = subCategories.reduce((acc, sub) => acc + sub.plugins.filter(p => Boolean(bot.plugins[p.key]?.state)).length, 0)
 
                                 return (
-                                    <Box key={section.id} sx={{ mb: 3 }}>
-                                        {/* Section Header */}
-                                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1, mb: 1, borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
-                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                <Typography sx={{ fontSize: '0.8rem', fontWeight: 800, color: '#38bdf8', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                                                    {section.label}
-                                                </Typography>
-                                            </Box>
+                                    <Box key={section.id} sx={{ mb: 3.5 }}>
+                                        {/* Main Section Header */}
+                                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1, mb: 1.5, borderBottom: '1px solid rgba(56, 189, 248, 0.2)' }}>
+                                            <Typography sx={{ fontSize: '0.85rem', fontWeight: 800, color: '#38bdf8', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                                                {section.label}
+                                            </Typography>
                                             <Chip
-                                                label={`${activeCount} / ${sectionPlugins.length} Active`}
+                                                label={`${activeCount} / ${totalPlugins} Active`}
                                                 size="small"
                                                 sx={{
                                                     height: 20,
@@ -929,65 +934,99 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                                             />
                                         </Box>
 
-                                        {/* Clean Horizontal Rows without chunky boxes */}
-                                        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                                            {sectionPlugins.map(plugin => {
-                                                bot.plugins[plugin.key] ??= {}
-                                                const isPluginActive = Boolean(bot.plugins[plugin.key]?.state)
+                                        {/* Sub-Categories */}
+                                        <Box sx={{ pl: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                            {subCategories.map(sub => {
+                                                const subActiveCount = sub.plugins.filter(p => Boolean(bot.plugins[p.key]?.state)).length
                                                 return (
-                                                    <Box
-                                                        key={plugin.key}
-                                                        sx={{
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            justifyContent: 'space-between',
-                                                            py: 1.2,
-                                                            px: 1.5,
-                                                            borderRadius: '6px',
-                                                            transition: 'background-color 0.15s',
-                                                            '&:hover': {
-                                                                bgcolor: 'rgba(255, 255, 255, 0.03)'
-                                                            },
-                                                            borderBottom: '1px solid rgba(255, 255, 255, 0.04)'
-                                                        }}
-                                                    >
-                                                        <Box sx={{ pr: 2 }}>
-                                                            <Typography sx={{ fontSize: '0.86rem', fontWeight: 600, color: isPluginActive ? '#f8fafc' : '#94a3b8' }}>
-                                                                {__(plugin.key)}
-                                                            </Typography>
-                                                            <Typography sx={{ fontSize: '0.74rem', color: '#64748b', display: 'block', mt: 0.2 }}>
-                                                                {plugin.description || `Background routine for ${__(plugin.key)}.`}
-                                                            </Typography>
-                                                        </Box>
-
-                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+                                                    <Box key={sub.id} sx={{ bgcolor: 'rgba(255, 255, 255, 0.015)', p: 1.5, borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
+                                                        {/* Sub-Category Subheader */}
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1, pb: 0.8, borderBottom: '1px solid rgba(255, 255, 255, 0.04)' }}>
+                                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                                                <Box sx={{ color: '#60a5fa', display: 'flex', alignItems: 'center' }}>
+                                                                    {sub.icon}
+                                                                </Box>
+                                                                <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#f1f5f9' }}>
+                                                                    {sub.label}
+                                                                </Typography>
+                                                            </Box>
                                                             <Chip
-                                                                label={isPluginActive ? "Visible in sidebar" : "Hidden"}
+                                                                label={`${subActiveCount} / ${sub.plugins.length}`}
                                                                 size="small"
                                                                 sx={{
-                                                                    height: 20,
-                                                                    fontSize: '0.65rem',
-                                                                    fontWeight: 600,
-                                                                    bgcolor: isPluginActive ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
-                                                                    color: isPluginActive ? '#10b981' : '#64748b',
-                                                                    border: '1px solid',
-                                                                    borderColor: isPluginActive ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255, 255, 255, 0.08)'
+                                                                    height: 18,
+                                                                    fontSize: '0.62rem',
+                                                                    fontWeight: 700,
+                                                                    bgcolor: subActiveCount > 0 ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.05)',
+                                                                    color: subActiveCount > 0 ? '#38bdf8' : '#64748b'
                                                                 }}
                                                             />
-                                                            <Switch
-                                                                checked={isPluginActive}
-                                                                onChange={(_, checked) => {
-                                                                    bot.plugins[plugin.key].state = checked
-                                                                    ws.send(JSON.stringify([ErrorType.Success, ActionType.SetUser, bot]))
-                                                                    setRefreshTrigger(prev => prev + 1)
-                                                                }}
-                                                                sx={{
-                                                                    '& .MuiSwitch-switchBase.Mui-checked': {
-                                                                        color: '#38bdf8',
-                                                                        '& + .MuiSwitch-track': { backgroundColor: '#0284c7' }
-                                                                    }
-                                                                }}
-                                                            />
+                                                        </Box>
+
+                                                        {/* Plugin Rows inside Sub-Category */}
+                                                        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                                                            {sub.plugins.map(plugin => {
+                                                                bot.plugins[plugin.key] ??= {}
+                                                                const isPluginActive = Boolean(bot.plugins[plugin.key]?.state)
+                                                                return (
+                                                                    <Box
+                                                                        key={plugin.key}
+                                                                        sx={{
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            justifyContent: 'space-between',
+                                                                            py: 0.9,
+                                                                            px: 1,
+                                                                            borderRadius: '4px',
+                                                                            transition: 'background-color 0.15s',
+                                                                            '&:hover': {
+                                                                                bgcolor: 'rgba(255, 255, 255, 0.025)'
+                                                                            },
+                                                                            borderBottom: '1px solid rgba(255, 255, 255, 0.02)'
+                                                                        }}
+                                                                    >
+                                                                        <Box sx={{ pr: 2 }}>
+                                                                            <Typography sx={{ fontSize: '0.84rem', fontWeight: 600, color: isPluginActive ? '#f8fafc' : '#94a3b8' }}>
+                                                                                {__(plugin.key)}
+                                                                            </Typography>
+                                                                            <Typography sx={{ fontSize: '0.72rem', color: '#64748b', display: 'block', mt: 0.1 }}>
+                                                                                {plugin.description || `Background routine for ${__(plugin.key)}.`}
+                                                                            </Typography>
+                                                                        </Box>
+
+                                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
+                                                                            <Chip
+                                                                                label={isPluginActive ? "Sidebar ON" : "Hidden"}
+                                                                                size="small"
+                                                                                sx={{
+                                                                                    height: 18,
+                                                                                    fontSize: '0.62rem',
+                                                                                    fontWeight: 600,
+                                                                                    bgcolor: isPluginActive ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
+                                                                                    color: isPluginActive ? '#10b981' : '#64748b',
+                                                                                    border: '1px solid',
+                                                                                    borderColor: isPluginActive ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255, 255, 255, 0.08)'
+                                                                                }}
+                                                                            />
+                                                                            <Switch
+                                                                                size="small"
+                                                                                checked={isPluginActive}
+                                                                                onChange={(_, checked) => {
+                                                                                    bot.plugins[plugin.key].state = checked
+                                                                                    ws.send(JSON.stringify([ErrorType.Success, ActionType.SetUser, bot]))
+                                                                                    setRefreshTrigger(prev => prev + 1)
+                                                                                }}
+                                                                                sx={{
+                                                                                    '& .MuiSwitch-switchBase.Mui-checked': {
+                                                                                        color: '#38bdf8',
+                                                                                        '& + .MuiSwitch-track': { backgroundColor: '#0284c7' }
+                                                                                    }
+                                                                                }}
+                                                                            />
+                                                                        </Box>
+                                                                    </Box>
+                                                                )
+                                                            })}
                                                         </Box>
                                                     </Box>
                                                 )
