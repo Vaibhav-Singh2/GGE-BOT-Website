@@ -14,7 +14,13 @@ import {
     ListItemIcon,
     ListItemText,
     Breadcrumbs,
-    Link
+    Link,
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    DialogActions,
+    Snackbar,
+    Alert
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
@@ -42,11 +48,26 @@ import SyncAltIcon from '@mui/icons-material/SyncAlt'
 import HandymanIcon from '@mui/icons-material/Handyman'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
-import AddIcon from '@mui/icons-material/Add'
+import ExtensionIcon from '@mui/icons-material/Extension'
+import FileDownloadIcon from '@mui/icons-material/FileDownload'
+import FileUploadIcon from '@mui/icons-material/FileUpload'
+import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder'
 import { ErrorType, ActionType, LogLevel } from "../types.js"
 
-// Exact Categories and Sections matching EmpireAutomation
+// Sidebar Structure with Master "PLUGINS & MODULES" category at the top
 const SIDEBAR_STRUCTURE = [
+    {
+        id: 'plugins_manager',
+        label: 'PLUGINS & MANAGER',
+        items: [
+            {
+                id: 'plugins_manager_item',
+                label: 'Plugins Manager',
+                icon: <ExtensionIcon fontSize="small" />,
+                isMasterManager: true
+            }
+        ]
+    },
     {
         id: 'attacks',
         label: 'ATTACKS & FARMING',
@@ -163,7 +184,7 @@ const SIDEBAR_STRUCTURE = [
                 id: 'alerts',
                 label: 'Alerts',
                 icon: <NotificationsActiveIcon fontSize="small" />,
-                match: ['incoming', 'alert']
+                match: ['incoming', 'alert', 'discord']
             },
             {
                 id: 'messages',
@@ -197,6 +218,10 @@ function PluginOptionField({ option, userPlugins, pluginKey, channels, __ }) {
     userPlugins[pluginKey] ??= {}
     const [val, setVal] = React.useState(userPlugins[pluginKey][option.key] ?? option.default)
 
+    React.useEffect(() => {
+        setVal(userPlugins[pluginKey][option.key] ?? option.default)
+    }, [userPlugins, pluginKey, option.key, option.default])
+
     const handleChange = newVal => {
         userPlugins[pluginKey][option.key] = newVal
         setVal(newVal)
@@ -220,6 +245,29 @@ function PluginOptionField({ option, userPlugins, pluginKey, channels, __ }) {
                         size="small"
                         value={val ?? ""}
                         onChange={e => handleChange(e.target.value)}
+                        sx={{
+                            '& .MuiOutlinedInput-root': {
+                                bgcolor: '#0f151e',
+                                borderRadius: '6px',
+                                fontSize: '0.82rem',
+                                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' }
+                            }
+                        }}
+                    />
+                </Box>
+            )
+        case "Number":
+            return (
+                <Box sx={{ mb: 1.5 }}>
+                    <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mb: 0.5 }}>
+                        {__(option.key)}
+                    </Typography>
+                    <TextField
+                        fullWidth
+                        size="small"
+                        type="number"
+                        value={val ?? ""}
+                        onChange={e => handleChange(Number(e.target.value))}
                         sx={{
                             '& .MuiOutlinedInput-root': {
                                 bgcolor: '#0f151e',
@@ -270,12 +318,28 @@ function SectionCard({ title, subtitle, children }) {
 }
 
 export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, __, languageCode, channels }) {
-    const [selectedItemId, setSelectedItemId] = React.useState('barrons')
+    const [selectedItemId, setSelectedItemId] = React.useState('plugins_manager_item')
     const [collapsedSections, setCollapsedSections] = React.useState({})
     const [isRunning, setIsRunning] = React.useState(Boolean(bot.state))
     const [logs, setLogs] = React.useState([])
     const [isStreaming, setIsStreaming] = React.useState(true)
+    const [templateDialogOpen, setTemplateDialogOpen] = React.useState(false)
+    const [savedTemplates, setSavedTemplates] = React.useState([])
+    const [newTemplateName, setNewTemplateName] = React.useState('')
+    const [feedbackMsg, setFeedbackMsg] = React.useState('')
+    const [refreshTrigger, setRefreshTrigger] = React.useState(0)
+    const fileInputRef = React.useRef(null)
     const logContainerRef = React.useRef(null)
+
+    // Load saved templates from localStorage on mount
+    React.useEffect(() => {
+        try {
+            const raw = localStorage.getItem('gge_saved_templates')
+            if (raw) setSavedTemplates(JSON.parse(raw))
+        } catch (e) {
+            console.error(e)
+        }
+    }, [])
 
     // Listen for live bot logs
     React.useEffect(() => {
@@ -313,7 +377,7 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
 
     const handleSave = () => {
         ws.send(JSON.stringify([ErrorType.Success, ActionType.SetUser, bot]))
-        alert("Bot configuration saved successfully!")
+        setFeedbackMsg("Bot configuration saved successfully!")
     }
 
     const handleToggleState = () => {
@@ -327,10 +391,233 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
         setCollapsedSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }))
     }
 
-    // Find the currently active menu item
+    /**
+     * Maps an EmpireAutomation template (e.g. ThorOP_template.json) to this bot's plugins schema
+     */
+    const applyEmpireAutomationTemplate = (templateData, templateName = "Template") => {
+        bot.plugins ??= {}
+        const bf = templateData.BotFunctions || {}
+        const fsKeys = bf.FunctionSelection || {}
+
+        // 1. Direct plugin state mapping
+        const pluginMap = {
+            'TowerBot': 'attackBarron',
+            'StormBot': 'attackStormRI',
+            'FortressBot': 'attackFortress',
+            'CampBot': 'attackNomads',
+            'KahnBot': 'attackKhan',
+            'BerriGreen': 'attackBerimondInvasion',
+            'ToolBuild': 'toolBuild',
+            'ProduceComponents': 'produceComponents',
+            'CoinSpender': 'coinSpender',
+            'AutomaticFeast': 'feast',
+            'HospitalHealer': 'hospitalHealer',
+            'CastleDefense': 'troopDodge',
+            'MessageManagement': 'messageManagement',
+            'EquipmentManager': 'sellStoredEquipment',
+            'RecruitBot': 'recruit',
+            'AlertBot': 'discord'
+        }
+
+        // Enable or disable based on template
+        Object.entries(pluginMap).forEach(([tplKey, botKey]) => {
+            bot.plugins[botKey] ??= {}
+            if (fsKeys[tplKey] !== undefined) {
+                bot.plugins[botKey].state = Boolean(fsKeys[tplKey])
+            }
+        })
+
+        // Also if raw plugins object is provided in exported json
+        if (templateData.plugins) {
+            Object.entries(templateData.plugins).forEach(([k, v]) => {
+                bot.plugins[k] = { ...bot.plugins[k], ...v }
+            })
+        }
+
+        // 2. Castle Defense / troopDodge detailed params
+        if (bf.CastleDefense?.FunctionParameters) {
+            const p = bf.CastleDefense.FunctionParameters
+            bot.plugins.troopDodge = {
+                ...bot.plugins.troopDodge,
+                state: fsKeys.CastleDefense !== undefined ? Boolean(fsKeys.CastleDefense) : true,
+                attackThresholdMinutes: p.AttackThresholdMinutes ?? 20,
+                pullBackDelayMinutes: p.PullBackDelayMinutes ?? 20,
+                autoPullBackTroops: p.AutoPullBackTroops ?? true,
+                autoSafeCastleFromAllianceList: p.AutoSafeCastleFromAllianceList ?? true,
+                troopAttackThreshold: p.TroopAttackThreshold ?? 300,
+                minimumSendAmount: p.MinimumSendAmount ?? 100,
+                openGateDurationHours: p.OpenGateDurationHours ?? 6,
+                confirmRubySpendForOpenGate: p.ConfirmRubySpendForOpenGate ?? true,
+                openGateWhenSendTroopsFails: p.OpenGateWhenSendTroopsFails ?? true,
+                sendTroopsWhenOpenGateFails: p.SendTroopsWhenOpenGateFails ?? true,
+                skipSendTroopsDuringPeaceProtection: p.SkipSendTroopsDuringPeaceProtection ?? true,
+                outpostX: p.Main?.SendTroops?.SendToCastle?.x ? String(p.Main.SendTroops.SendToCastle.x) : '',
+                outpostY: p.Main?.SendTroops?.SendToCastle?.y ? String(p.Main.SendTroops.SendToCastle.y) : ''
+            }
+        }
+
+        // 3. Coin Spender params
+        if (bf.CoinSpender?.FunctionParameters) {
+            const p = bf.CoinSpender.FunctionParameters
+            bot.plugins.coinSpender = {
+                ...bot.plugins.coinSpender,
+                state: fsKeys.CoinSpender !== undefined ? Boolean(fsKeys.CoinSpender) : true,
+                coinThreshold: p.CoinThreshold ?? 2000000000,
+                buyLadders: p.BuyLadders ?? true,
+                buyMantlets: p.BuyMantlets ?? true
+            }
+        }
+
+        // 4. Hospital Healer params
+        if (bf.HospitalHealer?.FunctionParameters) {
+            const p = bf.HospitalHealer.FunctionParameters
+            bot.plugins.hospitalHealer = {
+                ...bot.plugins.hospitalHealer,
+                state: fsKeys.HospitalHealer !== undefined ? Boolean(fsKeys.HospitalHealer) : true,
+                checkIntervalMinutes: p.CheckIntervalMinutes ?? 5,
+                healCoinTroops: p.HealCoinTroops ?? true,
+                discardRubyTroops: p.DiscardRubyTroops ?? true,
+                requestAllianceHelp: p.RequestAllianceHelp ?? true
+            }
+        }
+
+        // 5. Equipment Manager / sellStoredEquipment params
+        if (bf.EquipmentManager?.FunctionParameters) {
+            const p = bf.EquipmentManager.FunctionParameters
+            bot.plugins.sellStoredEquipment = {
+                ...bot.plugins.sellStoredEquipment,
+                state: fsKeys.EquipmentManager !== undefined ? Boolean(fsKeys.EquipmentManager) : true,
+                excludeTechnicusUpgrades: p.ExcludeTechnicusUpgrades ?? true,
+                excludeGemSocketedEquipment: p.ExcludeGemSocketedEquipment ?? true,
+                sellCommonEquipment: p.SellCommonEquipment ?? true,
+                sellRareEquipment: p.SellRareEquipment ?? true,
+                sellEpicEquipment: p.SellEpicEquipment ?? true,
+                sellLegendaryEquipment: p.SellLegendaryEquipment ?? true
+            }
+        }
+
+        // 6. Discord webhooks
+        if (templateData.discord?.webhookUrl) {
+            bot.plugins.discord = {
+                ...bot.plugins.discord,
+                state: Boolean(templateData.discord.webhookEnabled),
+                webhook: templateData.discord.webhookUrl
+            }
+        }
+
+        // Save immediately to backend
+        ws.send(JSON.stringify([ErrorType.Success, ActionType.SetUser, bot]))
+        setRefreshTrigger(prev => prev + 1)
+        setFeedbackMsg(`Template "${templateName}" applied successfully!`)
+    }
+
+    // Export current bot settings as downloadable JSON template
+    const handleDownloadTemplate = () => {
+        const payload = {
+            name: `${bot.name}_export`,
+            createdAt: new Date().toISOString(),
+            BotFunctions: {
+                FunctionSelection: {
+                    TowerBot: Boolean(bot.plugins.attackBarron?.state),
+                    StormBot: Boolean(bot.plugins.attackStormRI?.state),
+                    FortressBot: Boolean(bot.plugins.attackFortress?.state),
+                    CampBot: Boolean(bot.plugins.attackNomads?.state),
+                    KahnBot: Boolean(bot.plugins.attackKhan?.state),
+                    BerriGreen: Boolean(bot.plugins.attackBerimondInvasion?.state),
+                    ToolBuild: Boolean(bot.plugins.toolBuild?.state),
+                    ProduceComponents: Boolean(bot.plugins.produceComponents?.state),
+                    CoinSpender: Boolean(bot.plugins.coinSpender?.state),
+                    AutomaticFeast: Boolean(bot.plugins.feast?.state),
+                    HospitalHealer: Boolean(bot.plugins.hospitalHealer?.state),
+                    CastleDefense: Boolean(bot.plugins.troopDodge?.state),
+                    MessageManagement: Boolean(bot.plugins.messageManagement?.state),
+                    EquipmentManager: Boolean(bot.plugins.sellStoredEquipment?.state),
+                    RecruitBot: Boolean(bot.plugins.recruit?.state),
+                    AlertBot: Boolean(bot.plugins.discord?.state)
+                },
+                CastleDefense: { FunctionParameters: bot.plugins.troopDodge || {} },
+                CoinSpender: { FunctionParameters: bot.plugins.coinSpender || {} },
+                HospitalHealer: { FunctionParameters: bot.plugins.hospitalHealer || {} },
+                EquipmentManager: { FunctionParameters: bot.plugins.sellStoredEquipment || {} },
+                MessageManagement: { FunctionParameters: bot.plugins.messageManagement || {} }
+            },
+            plugins: bot.plugins
+        }
+
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload, null, 2))
+        const dlAnchor = document.createElement('a')
+        dlAnchor.setAttribute("href", dataStr)
+        dlAnchor.setAttribute("download", `${bot.name}_template.json`)
+        document.body.appendChild(dlAnchor)
+        dlAnchor.click()
+        dlAnchor.remove()
+        setFeedbackMsg("Template exported & downloaded!")
+    }
+
+    // Handle template file upload
+    const handleUploadTemplate = (e) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+
+        const reader = new FileReader()
+        reader.onload = (event) => {
+            try {
+                const parsed = JSON.parse(event.target.result)
+                applyEmpireAutomationTemplate(parsed, file.name.replace('.json', ''))
+            } catch (err) {
+                alert("Failed to parse JSON template file: " + err.message)
+            }
+        }
+        reader.readAsText(file)
+        e.target.value = ''
+    }
+
+    // Save current profile to local templates list
+    const handleSaveTemplatePreset = () => {
+        const name = newTemplateName.trim() || `Profile_${Date.now()}`
+        const newPreset = {
+            name,
+            date: new Date().toLocaleDateString(),
+            data: {
+                plugins: JSON.parse(JSON.stringify(bot.plugins || {}))
+            }
+        }
+        const updated = [...savedTemplates, newPreset]
+        setSavedTemplates(updated)
+        localStorage.setItem('gge_saved_templates', JSON.stringify(updated))
+        setNewTemplateName('')
+        setFeedbackMsg(`Saved template preset: ${name}`)
+    }
+
+    const handleDeletePreset = (index) => {
+        const updated = savedTemplates.filter((_, i) => i !== index)
+        setSavedTemplates(updated)
+        localStorage.setItem('gge_saved_templates', JSON.stringify(updated))
+    }
+
+    // Filter which sidebar categories/items should display:
+    // 1. "PLUGINS & MANAGER" is ALWAYS visible.
+    // 2. An item is visible ONLY if at least one matching plugin is ENABLED in bot.plugins.
+    const visibleSidebarStructure = SIDEBAR_STRUCTURE.map(section => {
+        if (section.id === 'plugins_manager') return section
+
+        const visibleItems = section.items.filter(item => {
+            if (!item.match) return false
+            // Check if any matching plugin is enabled
+            return plugins.some(p => {
+                const k = p.key.toLowerCase()
+                const matches = item.match.some(m => k.includes(m))
+                return matches && Boolean(bot.plugins[p.key]?.state)
+            })
+        })
+
+        return { ...section, items: visibleItems }
+    }).filter(section => section.items.length > 0)
+
+    // Ensure selected item is valid; if selected item is no longer visible, default to plugins manager
     let activeItemObj = null
     let activeSectionObj = null
-    for (const section of SIDEBAR_STRUCTURE) {
+    for (const section of visibleSidebarStructure) {
         for (const item of section.items) {
             if (item.id === selectedItemId) {
                 activeItemObj = item
@@ -340,15 +627,31 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
         }
     }
 
-    // Filter plugins corresponding to the selected sidebar item
-    const matchingPlugins = plugins.filter(p => {
-        if (!activeItemObj || !activeItemObj.match) return false
-        const k = p.key.toLowerCase()
-        return activeItemObj.match.some(m => k.includes(m))
-    })
+    if (!activeItemObj) {
+        activeItemObj = SIDEBAR_STRUCTURE[0].items[0]
+        activeSectionObj = SIDEBAR_STRUCTURE[0]
+    }
+
+    // Matching plugins for active item
+    const matchingPlugins = activeItemObj.isMasterManager
+        ? []
+        : plugins.filter(p => {
+            if (!activeItemObj || !activeItemObj.match) return false
+            const k = p.key.toLowerCase()
+            return activeItemObj.match.some(m => k.includes(m))
+        })
 
     return (
         <Box className="ea-container">
+            {/* Hidden File Input for Template Upload */}
+            <input
+                type="file"
+                ref={fileInputRef}
+                style={{ display: 'none' }}
+                accept=".json"
+                onChange={handleUploadTemplate}
+            />
+
             {/* Breadcrumb Header */}
             <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Box>
@@ -364,12 +667,12 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                         </Typography>
                     </Breadcrumbs>
                     <Typography variant="body2" sx={{ color: '#64748b' }}>
-                        Manage your bot's configuration, modules, templates, and settings.
+                        Manage your bot's modular plugins, templates, import/export, and defense settings.
                     </Typography>
                 </Box>
             </Box>
 
-            {/* Action Top Bar matching PDF */}
+            {/* Action Top Bar matching SaaS specs */}
             <Card className="ea-card" sx={{ mb: 3, p: 1.5, display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                     <Button
@@ -398,14 +701,43 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                     </Box>
                 </Box>
 
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                {/* Template Action Controls */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+                    <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<FileUploadIcon />}
+                        onClick={() => fileInputRef.current?.click()}
+                        sx={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.3)', textTransform: 'none', borderRadius: '6px', fontSize: '0.78rem' }}
+                    >
+                        Upload Template
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<FileDownloadIcon />}
+                        onClick={handleDownloadTemplate}
+                        sx={{ color: '#a78bfa', borderColor: 'rgba(167, 139, 250, 0.3)', textTransform: 'none', borderRadius: '6px', fontSize: '0.78rem' }}
+                    >
+                        Download Template
+                    </Button>
+                    <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<BookmarkBorderIcon />}
+                        onClick={() => setTemplateDialogOpen(true)}
+                        sx={{ color: '#e2e8f0', borderColor: 'rgba(255, 255, 255, 0.15)', textTransform: 'none', borderRadius: '6px', fontSize: '0.78rem' }}
+                    >
+                        Templates Library
+                    </Button>
+
                     <Button
                         variant="contained"
                         size="small"
                         color={isRunning ? "error" : "success"}
                         startIcon={isRunning ? <StopIcon /> : <PlayArrowIcon />}
                         onClick={handleToggleState}
-                        sx={{ fontWeight: 600, textTransform: 'none', borderRadius: '6px', px: 2.5 }}
+                        sx={{ fontWeight: 600, textTransform: 'none', borderRadius: '6px', px: 2 }}
                     >
                         {isRunning ? "Stop Bot" : "Start Bot"}
                     </Button>
@@ -421,9 +753,9 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                 </Box>
             </Card>
 
-            {/* Layout: Sidebar + Main Workspace (Matching Screenshot) */}
+            {/* Layout: Sidebar + Main Workspace */}
             <Box className="ea-bot-layout">
-                {/* Left Modular Sidebar with Exactly Styled Sections */}
+                {/* Left Modular Dynamic Sidebar */}
                 <Box
                     className="ea-bot-sidebar"
                     sx={{
@@ -435,7 +767,7 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                         p: 1
                     }}
                 >
-                    {SIDEBAR_STRUCTURE.map(section => {
+                    {visibleSidebarStructure.map(section => {
                         const isCollapsed = Boolean(collapsedSections[section.id])
                         return (
                             <Box key={section.id} sx={{ mb: 1.5 }}>
@@ -449,7 +781,7 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                                         px: 1,
                                         py: 0.6,
                                         cursor: 'pointer',
-                                        color: '#94a3b8',
+                                        color: section.id === 'plugins_manager' ? '#38bdf8' : '#94a3b8',
                                         userSelect: 'none',
                                         '&:hover': { color: '#e2e8f0' }
                                     }}
@@ -471,8 +803,8 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                                             height: 16,
                                             fontSize: '0.6rem',
                                             fontWeight: 800,
-                                            bgcolor: '#1e293b',
-                                            color: '#60a5fa'
+                                            bgcolor: section.id === 'plugins_manager' ? 'rgba(56, 189, 248, 0.2)' : '#1e293b',
+                                            color: section.id === 'plugins_manager' ? '#38bdf8' : '#60a5fa'
                                         }}
                                     />
                                 </Box>
@@ -522,97 +854,200 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                         <Button
                             fullWidth
                             size="small"
-                            startIcon={<AddIcon sx={{ fontSize: '0.9rem !important' }} />}
-                            onClick={() => alert("All available modules are actively listed.")}
+                            startIcon={<ExtensionIcon sx={{ fontSize: '0.9rem !important' }} />}
+                            onClick={() => setSelectedItemId('plugins_manager_item')}
                             sx={{
-                                color: '#94a3b8',
+                                color: '#38bdf8',
                                 textTransform: 'none',
                                 fontSize: '0.75rem',
                                 justifyContent: 'flex-start',
                                 px: 1.5,
-                                '&:hover': { color: '#f8fafc', bgcolor: 'rgba(255,255,255,0.04)' }
+                                '&:hover': { color: '#f8fafc', bgcolor: 'rgba(56, 189, 248, 0.1)' }
                             }}
                         >
-                            Manage functions
+                            Toggle Plugins
                         </Button>
                     </Box>
                 </Box>
 
                 {/* Main Content Area */}
                 <Box className="ea-bot-content">
-                    <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    {/* If Master Plugins Manager is selected */}
+                    {activeItemObj.isMasterManager ? (
                         <Box>
-                            <Typography variant="h6" sx={{ fontWeight: 800, color: '#f8fafc', fontSize: '1.15rem' }}>
-                                {activeItemObj?.label}
-                            </Typography>
-                            <Typography variant="caption" sx={{ color: '#94a3b8' }}>
-                                Section: {activeSectionObj?.label} • {matchingPlugins.length} active module(s)
-                            </Typography>
-                        </Box>
-                    </Box>
-
-                    {matchingPlugins.length === 0 ? (
-                        <Card className="ea-card" sx={{ p: 4, textAlign: 'center' }}>
-                            <Typography variant="subtitle2" sx={{ color: '#f8fafc', mb: 0.5 }}>
-                                {activeItemObj?.label} module is planned
-                            </Typography>
-                            <Typography variant="caption" sx={{ color: '#64748b' }}>
-                                This function belongs to the next release phase and will be populated with routine controls.
-                            </Typography>
-                        </Card>
-                    ) : (
-                        matchingPlugins.map(plugin => {
-                            bot.plugins[plugin.key] ??= {}
-                            const isEnabled = Boolean(bot.plugins[plugin.key]?.state)
-
-                            return (
-                                <SectionCard
-                                    key={plugin.key}
-                                    title={__(plugin.key)}
-                                    subtitle={plugin.description}
+                            <Box sx={{ mb: 2.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <Box>
+                                    <Typography variant="h6" sx={{ fontWeight: 800, color: '#f8fafc', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <ExtensionIcon sx={{ color: '#38bdf8' }} /> Plugins & Modules Hub
+                                    </Typography>
+                                    <Typography variant="caption" sx={{ color: '#94a3b8' }}>
+                                        Turn plugins ON/OFF below. Only modules enabled here will appear in your sidebar for configuration.
+                                    </Typography>
+                                </Box>
+                                <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={<FileUploadIcon />}
+                                    onClick={() => fileInputRef.current?.click()}
+                                    sx={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.3)', textTransform: 'none' }}
                                 >
-                                    {/* Enable Switch Header */}
-                                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, pb: 1.5, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                                        <Typography variant="body2" sx={{ color: '#cbd5e1', fontWeight: 600 }}>
-                                            Enable {__(plugin.key)} Routine
-                                        </Typography>
-                                        <Switch
-                                            checked={isEnabled}
-                                            onChange={(_, checked) => {
-                                                bot.plugins[plugin.key].state = checked
-                                                ws.send(JSON.stringify([ErrorType.Success, ActionType.SetUser, bot]))
-                                            }}
-                                            sx={{
-                                                '& .MuiSwitch-switchBase.Mui-checked': {
-                                                    color: '#3b82f6',
-                                                    '& + .MuiSwitch-track': { backgroundColor: '#2563eb' }
-                                                }
-                                            }}
-                                        />
-                                    </Box>
+                                    Upload Template
+                                </Button>
+                            </Box>
 
-                                    {/* Plugin Options Fields */}
-                                    {plugin.pluginOptions && plugin.pluginOptions.length > 0 ? (
-                                        <Box sx={{ bgcolor: '#0f151e', p: 2, borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }}>
-                                            {plugin.pluginOptions.map((opt, idx) => (
-                                                <PluginOptionField
-                                                    key={`${plugin.key}-${idx}`}
-                                                    option={opt}
-                                                    userPlugins={bot.plugins}
-                                                    pluginKey={plugin.key}
-                                                    channels={channels}
-                                                    __={__}
+                            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 2 }}>
+                                {plugins.map(plugin => {
+                                    bot.plugins[plugin.key] ??= {}
+                                    const isPluginActive = Boolean(bot.plugins[plugin.key]?.state)
+                                    return (
+                                        <Card
+                                            key={plugin.key}
+                                            className="ea-card"
+                                            sx={{
+                                                p: 2,
+                                                bgcolor: isPluginActive ? 'rgba(15, 23, 42, 0.85)' : '#0f1723',
+                                                border: '1px solid',
+                                                borderColor: isPluginActive ? 'rgba(56, 189, 248, 0.35)' : 'rgba(255, 255, 255, 0.05)',
+                                                borderRadius: '10px',
+                                                display: 'flex',
+                                                flexDirection: 'column',
+                                                justifyContent: 'space-between',
+                                                transition: 'all 0.2s'
+                                            }}
+                                        >
+                                            <Box>
+                                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                                                    <Typography variant="subtitle2" sx={{ fontWeight: 700, color: isPluginActive ? '#f8fafc' : '#94a3b8' }}>
+                                                        {__(plugin.key)}
+                                                    </Typography>
+                                                    <Switch
+                                                        size="small"
+                                                        checked={isPluginActive}
+                                                        onChange={(_, checked) => {
+                                                            bot.plugins[plugin.key].state = checked
+                                                            ws.send(JSON.stringify([ErrorType.Success, ActionType.SetUser, bot]))
+                                                            setRefreshTrigger(prev => prev + 1)
+                                                        }}
+                                                        sx={{
+                                                            '& .MuiSwitch-switchBase.Mui-checked': {
+                                                                color: '#38bdf8',
+                                                                '& + .MuiSwitch-track': { backgroundColor: '#0284c7' }
+                                                            }
+                                                        }}
+                                                    />
+                                                </Box>
+                                                <Typography variant="caption" sx={{ color: '#64748b', display: 'block', mb: 1, minHeight: 32 }}>
+                                                    {plugin.description || `Automated background routine for ${__(plugin.key)}.`}
+                                                </Typography>
+                                            </Box>
+
+                                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pt: 1, borderTop: '1px solid rgba(255,255,255,0.04)' }}>
+                                                <Chip
+                                                    label={isPluginActive ? "Active in Sidebar" : "Inactive"}
+                                                    size="small"
+                                                    sx={{
+                                                        height: 18,
+                                                        fontSize: '0.65rem',
+                                                        bgcolor: isPluginActive ? 'rgba(16, 185, 129, 0.15)' : 'rgba(100, 116, 139, 0.15)',
+                                                        color: isPluginActive ? '#10b981' : '#64748b'
+                                                    }}
                                                 />
-                                            ))}
-                                        </Box>
-                                    ) : (
-                                        <Typography variant="caption" sx={{ color: '#64748b' }}>
-                                            No extra parameters required for this module.
-                                        </Typography>
-                                    )}
-                                </SectionCard>
-                            )
-                        })
+                                                <Typography variant="caption" sx={{ color: '#475569', fontSize: '0.7rem' }}>
+                                                    {plugin.pluginOptions?.length || 0} parameter(s)
+                                                </Typography>
+                                            </Box>
+                                        </Card>
+                                    )
+                                })}
+                            </Box>
+                        </Box>
+                    ) : (
+                        /* Module Details and Configuration Form */
+                        <Box>
+                            <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <Box>
+                                    <Typography variant="h6" sx={{ fontWeight: 800, color: '#f8fafc', fontSize: '1.15rem' }}>
+                                        {activeItemObj?.label}
+                                    </Typography>
+                                    <Typography variant="caption" sx={{ color: '#94a3b8' }}>
+                                        Section: {activeSectionObj?.label} • {matchingPlugins.length} active module(s)
+                                    </Typography>
+                                </Box>
+                            </Box>
+
+                            {matchingPlugins.length === 0 ? (
+                                <Card className="ea-card" sx={{ p: 4, textAlign: 'center' }}>
+                                    <Typography variant="subtitle2" sx={{ color: '#f8fafc', mb: 0.5 }}>
+                                        No active plugin for {activeItemObj?.label}
+                                    </Typography>
+                                    <Typography variant="caption" sx={{ color: '#64748b', display: 'block', mb: 2 }}>
+                                        Enable this plugin in the Plugins Manager to configure parameters.
+                                    </Typography>
+                                    <Button
+                                        size="small"
+                                        variant="outlined"
+                                        onClick={() => setSelectedItemId('plugins_manager_item')}
+                                        sx={{ color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.3)', textTransform: 'none' }}
+                                    >
+                                        Open Plugins Manager
+                                    </Button>
+                                </Card>
+                            ) : (
+                                matchingPlugins.map(plugin => {
+                                    bot.plugins[plugin.key] ??= {}
+                                    const isEnabled = Boolean(bot.plugins[plugin.key]?.state)
+
+                                    return (
+                                        <SectionCard
+                                            key={plugin.key}
+                                            title={__(plugin.key)}
+                                            subtitle={plugin.description}
+                                        >
+                                            {/* Enable Switch Header */}
+                                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2, pb: 1.5, borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                                <Typography variant="body2" sx={{ color: '#cbd5e1', fontWeight: 600 }}>
+                                                    Enable {__(plugin.key)} Routine
+                                                </Typography>
+                                                <Switch
+                                                    checked={isEnabled}
+                                                    onChange={(_, checked) => {
+                                                        bot.plugins[plugin.key].state = checked
+                                                        ws.send(JSON.stringify([ErrorType.Success, ActionType.SetUser, bot]))
+                                                        setRefreshTrigger(prev => prev + 1)
+                                                    }}
+                                                    sx={{
+                                                        '& .MuiSwitch-switchBase.Mui-checked': {
+                                                            color: '#3b82f6',
+                                                            '& + .MuiSwitch-track': { backgroundColor: '#2563eb' }
+                                                        }
+                                                    }}
+                                                />
+                                            </Box>
+
+                                            {/* Plugin Options Fields */}
+                                            {plugin.pluginOptions && plugin.pluginOptions.length > 0 ? (
+                                                <Box sx={{ bgcolor: '#0f151e', p: 2, borderRadius: '8px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                                                    {plugin.pluginOptions.map((opt, idx) => (
+                                                        <PluginOptionField
+                                                            key={`${plugin.key}-${idx}-${refreshTrigger}`}
+                                                            option={opt}
+                                                            userPlugins={bot.plugins}
+                                                            pluginKey={plugin.key}
+                                                            channels={channels}
+                                                            __={__}
+                                                        />
+                                                    ))}
+                                                </Box>
+                                            ) : (
+                                                <Typography variant="caption" sx={{ color: '#64748b' }}>
+                                                    No extra parameters required for this module.
+                                                </Typography>
+                                            )}
+                                        </SectionCard>
+                                    )
+                                })
+                            )}
+                        </Box>
                     )}
 
                     {/* Docked Bot Monitoring & Terminal at the Bottom */}
@@ -683,6 +1118,134 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                     </Card>
                 </Box>
             </Box>
+
+            {/* Template Library Dialog */}
+            <Dialog
+                open={templateDialogOpen}
+                onClose={() => setTemplateDialogOpen(false)}
+                PaperProps={{
+                    sx: {
+                        bgcolor: '#131922',
+                        border: '1px solid rgba(255,255,255,0.1)',
+                        borderRadius: '12px',
+                        color: '#f8fafc',
+                        minWidth: 420
+                    }
+                }}
+            >
+                <DialogTitle sx={{ fontWeight: 800, pb: 1, borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                    Saved Templates & Presets
+                </DialogTitle>
+                <DialogContent sx={{ pt: 2 }}>
+                    <Box sx={{ mb: 3 }}>
+                        <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mb: 1 }}>
+                            Save Current Settings as New Template:
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 1 }}>
+                            <TextField
+                                size="small"
+                                fullWidth
+                                placeholder="Template Name (e.g. ThorOP_Main)"
+                                value={newTemplateName}
+                                onChange={e => setNewTemplateName(e.target.value)}
+                                sx={{
+                                    '& .MuiOutlinedInput-root': {
+                                        bgcolor: '#0f151e',
+                                        borderRadius: '6px',
+                                        fontSize: '0.85rem'
+                                    }
+                                }}
+                            />
+                            <Button
+                                variant="contained"
+                                size="small"
+                                onClick={handleSaveTemplatePreset}
+                                sx={{ bgcolor: '#3b82f6', textTransform: 'none', px: 2 }}
+                            >
+                                Save
+                            </Button>
+                        </Box>
+                    </Box>
+
+                    <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mb: 1, fontWeight: 700, textTransform: 'uppercase' }}>
+                        Your Saved Presets:
+                    </Typography>
+
+                    {savedTemplates.length === 0 ? (
+                        <Typography variant="caption" sx={{ color: '#64748b', fontStyle: 'italic', display: 'block', py: 1 }}>
+                            No saved templates yet. Upload a JSON template or save current settings above.
+                        </Typography>
+                    ) : (
+                        <List disablePadding>
+                            {savedTemplates.map((preset, idx) => (
+                                <Card
+                                    key={idx}
+                                    sx={{
+                                        mb: 1,
+                                        p: 1.2,
+                                        bgcolor: '#0f151e',
+                                        border: '1px solid rgba(255,255,255,0.06)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between'
+                                    }}
+                                >
+                                    <Box>
+                                        <Typography variant="body2" sx={{ fontWeight: 700, color: '#f8fafc', fontSize: '0.85rem' }}>
+                                            {preset.name}
+                                        </Typography>
+                                        <Typography variant="caption" sx={{ color: '#64748b', fontSize: '0.72rem' }}>
+                                            Saved on {preset.date}
+                                        </Typography>
+                                    </Box>
+                                    <Box sx={{ display: 'flex', gap: 1 }}>
+                                        <Button
+                                            size="small"
+                                            variant="outlined"
+                                            onClick={() => {
+                                                applyEmpireAutomationTemplate(preset.data, preset.name)
+                                                setTemplateDialogOpen(false)
+                                            }}
+                                            sx={{ color: '#38bdf8', borderColor: 'rgba(56,189,248,0.3)', textTransform: 'none', fontSize: '0.75rem', py: 0.2 }}
+                                        >
+                                            Apply
+                                        </Button>
+                                        <Button
+                                            size="small"
+                                            variant="outlined"
+                                            color="error"
+                                            onClick={() => handleDeletePreset(idx)}
+                                            sx={{ textTransform: 'none', fontSize: '0.75rem', py: 0.2, minWidth: 32 }}
+                                        >
+                                            ✕
+                                        </Button>
+                                    </Box>
+                                </Card>
+                            ))}
+                        </List>
+                    )}
+                </DialogContent>
+                <DialogActions sx={{ p: 2, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                    <Button
+                        onClick={() => setTemplateDialogOpen(false)}
+                        sx={{ color: '#94a3b8', textTransform: 'none' }}
+                    >
+                        Close
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            {/* Notification Toast */}
+            <Snackbar
+                open={Boolean(feedbackMsg)}
+                autoHideDuration={4000}
+                onClose={() => setFeedbackMsg('')}
+                anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+            >
+                <Alert onClose={() => setFeedbackMsg('')} severity="success" sx={{ width: '100%', bgcolor: '#0f172a', color: '#38bdf8', border: '1px solid #38bdf8' }}>
+                    {feedbackMsg}
+                </Alert>
+            </Snackbar>
         </Box>
     )
 }
