@@ -24,7 +24,8 @@ import {
     FormControl,
     InputLabel,
     Select,
-    MenuItem
+    MenuItem,
+    Autocomplete
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
@@ -58,6 +59,7 @@ import FileUploadIcon from '@mui/icons-material/FileUpload'
 import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import ManageAccountsIcon from '@mui/icons-material/ManageAccounts'
+import unitsCatalog from '../data/unitsCatalog.json'
 import { ErrorType, ActionType, LogLevel } from "../types.js"
 import settings from '../settings.json'
 
@@ -284,7 +286,83 @@ function PluginOptionField({ option, userPlugins, pluginKey, channels, __, onOpt
                     {__(option.key)}
                 </Typography>
             )
-        case "Text":
+        case "Select":
+            return (
+                <Box sx={{ mb: 1.5 }}>
+                    <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mb: 0.5 }}>
+                        {__(option.key)}
+                    </Typography>
+                    <FormControl fullWidth size="small">
+                        <Select
+                            value={val ?? option.default ?? (option.selection?.[0] || "")}
+                            onChange={e => handleChange(e.target.value)}
+                            sx={{
+                                bgcolor: '#0f151e',
+                                borderRadius: '6px',
+                                fontSize: '0.82rem',
+                                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' }
+                            }}
+                        >
+                            {(option.selection || []).map((item, idx) => (
+                                <MenuItem key={idx} value={String(idx)}>
+                                    {__(item)}
+                                </MenuItem>
+                            ))}
+                        </Select>
+                    </FormControl>
+                </Box>
+            )
+        case "Text": {
+            // Enhanced troop selector for troopIDs, mainTroopIDs, outpost1TroopIDs, etc.
+            const isTroopField = option.key === 'troopIDs' || option.key.toLowerCase().includes('troopids')
+            if (isTroopField) {
+                const currentIds = String(val || "")
+                    .split(/[\s,]+/)
+                    .filter(Boolean)
+                    .map(Number)
+                    .filter(id => Number.isInteger(id) && id > 0)
+                const selectedUnits = currentIds.map(id => unitsCatalog.find(u => u.id === id) || { id, name: `Unit #${id}` })
+
+                return (
+                    <Box sx={{ mb: 1.5 }}>
+                        <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mb: 0.5 }}>
+                            {__(option.key)} (Troop Priority Picker)
+                        </Typography>
+                        <Autocomplete
+                            multiple
+                            size="small"
+                            options={unitsCatalog.filter(u => !u.isTool)}
+                            getOptionLabel={opt => `${opt.name} (#${opt.id})`}
+                            value={selectedUnits}
+                            isOptionEqualToValue={(opt, val) => opt.id === val.id}
+                            onChange={(_, newValues) => {
+                                const newIdStr = newValues.map(v => v.id).join(', ')
+                                handleChange(newIdStr)
+                            }}
+                            renderInput={params => (
+                                <TextField
+                                    {...params}
+                                    placeholder="Search and select troops..."
+                                    helperText="Select troops in priority order. Underlying IDs are saved automatically."
+                                    sx={{
+                                        '& .MuiOutlinedInput-root': {
+                                            bgcolor: '#0f151e',
+                                            borderRadius: '6px',
+                                            fontSize: '0.82rem',
+                                            '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' }
+                                        },
+                                        '& .MuiFormHelperText-root': {
+                                            color: '#64748b',
+                                            fontSize: '0.7rem'
+                                        }
+                                    }}
+                                />
+                            )}
+                        />
+                    </Box>
+                )
+            }
+
             return (
                 <Box sx={{ mb: 1.5 }}>
                     <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mb: 0.5 }}>
@@ -306,6 +384,7 @@ function PluginOptionField({ option, userPlugins, pluginKey, channels, __, onOpt
                     />
                 </Box>
             )
+        }
         case "Number":
             return (
                 <Box sx={{ mb: 1.5 }}>
