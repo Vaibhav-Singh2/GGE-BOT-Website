@@ -24,8 +24,7 @@ import {
     FormControl,
     InputLabel,
     Select,
-    MenuItem,
-    Autocomplete
+    MenuItem
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
@@ -59,9 +58,6 @@ import FileUploadIcon from '@mui/icons-material/FileUpload'
 import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
 import ManageAccountsIcon from '@mui/icons-material/ManageAccounts'
-import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh'
-import AttackTemplatesView from './AttackTemplatesView.js'
-import unitsCatalog from '../data/unitsCatalog.json'
 import { ErrorType, ActionType, LogLevel } from "../types.js"
 import settings from '../settings.json'
 
@@ -125,12 +121,6 @@ const SIDEBAR_STRUCTURE = [
         id: 'attacks',
         label: 'ATTACKS & FARMING',
         items: [
-            {
-                id: 'attack_templates',
-                label: 'Attack Templates',
-                icon: <AutoFixHighIcon fontSize="small" />,
-                isAttackTemplates: true
-            },
             {
                 id: 'barrons',
                 label: 'Robber Baron Castles',
@@ -294,82 +284,7 @@ function PluginOptionField({ option, userPlugins, pluginKey, channels, __, onOpt
                     {__(option.key)}
                 </Typography>
             )
-        case "Select":
-            return (
-                <Box sx={{ mb: 1.5 }}>
-                    <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mb: 0.5 }}>
-                        {__(option.key)}
-                    </Typography>
-                    <FormControl fullWidth size="small">
-                        <Select
-                            value={val ?? option.default ?? (option.selection?.[0] || "")}
-                            onChange={e => handleChange(e.target.value)}
-                            sx={{
-                                bgcolor: '#0f151e',
-                                borderRadius: '6px',
-                                fontSize: '0.82rem',
-                                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' }
-                            }}
-                        >
-                            {(option.selection || []).map((item, idx) => (
-                                <MenuItem key={idx} value={String(idx)}>
-                                    {__(item)}
-                                </MenuItem>
-                            ))}
-                        </Select>
-                    </FormControl>
-                </Box>
-            )
-        case "Text": {
-            // Enhanced troop selector for troopIDs (e.g. in Berimond Kingdom)
-            if (option.key === 'troopIDs') {
-                const currentIds = String(val || "")
-                    .split(/[\s,]+/)
-                    .filter(Boolean)
-                    .map(Number)
-                    .filter(id => Number.isInteger(id) && id > 0)
-                const selectedUnits = currentIds.map(id => unitsCatalog.find(u => u.id === id) || { id, name: `Unit #${id}` })
-
-                return (
-                    <Box sx={{ mb: 1.5 }}>
-                        <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mb: 0.5 }}>
-                            {__(option.key)} (Troop Priority Picker)
-                        </Typography>
-                        <Autocomplete
-                            multiple
-                            size="small"
-                            options={unitsCatalog.filter(u => !u.isTool)}
-                            getOptionLabel={opt => `${opt.name} (#${opt.id})`}
-                            value={selectedUnits}
-                            isOptionEqualToValue={(opt, val) => opt.id === val.id}
-                            onChange={(_, newValues) => {
-                                const newIdStr = newValues.map(v => v.id).join(', ')
-                                handleChange(newIdStr)
-                            }}
-                            renderInput={params => (
-                                <TextField
-                                    {...params}
-                                    placeholder="Search and select troops..."
-                                    helperText="Select troops in priority order. Underlying IDs are saved automatically."
-                                    sx={{
-                                        '& .MuiOutlinedInput-root': {
-                                            bgcolor: '#0f151e',
-                                            borderRadius: '6px',
-                                            fontSize: '0.82rem',
-                                            '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' }
-                                        },
-                                        '& .MuiFormHelperText-root': {
-                                            color: '#64748b',
-                                            fontSize: '0.7rem'
-                                        }
-                                    }}
-                                />
-                            )}
-                        />
-                    </Box>
-                )
-            }
-
+        case "Text":
             return (
                 <Box sx={{ mb: 1.5 }}>
                     <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mb: 0.5 }}>
@@ -391,7 +306,6 @@ function PluginOptionField({ option, userPlugins, pluginKey, channels, __, onOpt
                     />
                 </Box>
             )
-        }
         case "Number":
             return (
                 <Box sx={{ mb: 1.5 }}>
@@ -717,7 +631,23 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                 }
             }
 
-            // 6. Discord webhooks
+            // 6. RecruitBot params
+            if (bf.RecruitBot?.FunctionParameters) {
+                const p = bf.RecruitBot.FunctionParameters
+                next.recruit = {
+                    ...next.recruit,
+                    state: fsKeys.RecruitBot !== undefined ? Boolean(fsKeys.RecruitBot) : true,
+                    mainTroopIDs: (p.Main?.TroopIds || []).join(", "),
+                    outpost1TroopIDs: (p.Outpost1?.TroopIds || []).join(", "),
+                    outpost2TroopIDs: (p.Outpost2?.TroopIds || []).join(", "),
+                    outpost3TroopIDs: (p.Outpost3?.TroopIds || []).join(", "),
+                    iceTroopIDs: (p.Ice?.TroopIds || []).join(", "),
+                    desertTroopIDs: (p.Desert?.TroopIds || []).join(", "),
+                    fireTroopIDs: (p.Fire?.TroopIds || []).join(", ")
+                }
+            }
+
+            // 7. Discord webhooks
             if (templateData.discord?.webhookUrl) {
                 next.discord = {
                     ...next.discord,
@@ -760,7 +690,18 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                 CoinSpender: { FunctionParameters: draftPlugins.coinSpender || {} },
                 HospitalHealer: { FunctionParameters: draftPlugins.hospitalHealer || {} },
                 EquipmentManager: { FunctionParameters: draftPlugins.sellStoredEquipment || {} },
-                MessageManagement: { FunctionParameters: draftPlugins.messageManagement || {} }
+                MessageManagement: { FunctionParameters: draftPlugins.messageManagement || {} },
+                RecruitBot: {
+                    FunctionParameters: {
+                        Main: { TroopIds: String(draftPlugins.recruit?.mainTroopIDs || "").split(/[\s,]+/).filter(Boolean).map(Number) },
+                        Outpost1: { TroopIds: String(draftPlugins.recruit?.outpost1TroopIDs || "").split(/[\s,]+/).filter(Boolean).map(Number) },
+                        Outpost2: { TroopIds: String(draftPlugins.recruit?.outpost2TroopIDs || "").split(/[\s,]+/).filter(Boolean).map(Number) },
+                        Outpost3: { TroopIds: String(draftPlugins.recruit?.outpost3TroopIDs || "").split(/[\s,]+/).filter(Boolean).map(Number) },
+                        Ice: { TroopIds: String(draftPlugins.recruit?.iceTroopIDs || "").split(/[\s,]+/).filter(Boolean).map(Number) },
+                        Desert: { TroopIds: String(draftPlugins.recruit?.desertTroopIDs || "").split(/[\s,]+/).filter(Boolean).map(Number) },
+                        Fire: { TroopIds: String(draftPlugins.recruit?.fireTroopIDs || "").split(/[\s,]+/).filter(Boolean).map(Number) }
+                    }
+                }
             },
             plugins: draftPlugins
         }
@@ -823,7 +764,6 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
         if (section.id === 'account_manager' || section.id === 'plugins_manager') return section
 
         const visibleItems = section.items.filter(item => {
-            if (item.isAttackTemplates) return true
             if (!item.match) return false
             // Check if any matching plugin is enabled
             return plugins.some(p => {
@@ -855,7 +795,7 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
     }
 
     // Matching plugins for active item
-    const matchingPlugins = (activeItemObj.isMasterManager || activeItemObj.isAttackTemplates || activeItemObj.isAccountConfig)
+    const matchingPlugins = activeItemObj.isMasterManager
         ? []
         : plugins.filter(p => {
             if (!activeItemObj || !activeItemObj.match) return false
@@ -1472,9 +1412,6 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                                 </Box>
                             </SectionCard>
                         </Box>
-                    ) : activeItemObj.isAttackTemplates ? (
-                        /* Dedicated Attack Templates & Wave Builder View */
-                        <AttackTemplatesView bot={bot} />
                     ) : (
                         /* Module Details and Configuration Form */
                         <Box>
