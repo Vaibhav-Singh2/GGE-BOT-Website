@@ -28,92 +28,170 @@ import TerminalIcon from '@mui/icons-material/Terminal'
 import PauseIcon from '@mui/icons-material/Pause'
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep'
 import Inventory2Icon from '@mui/icons-material/Inventory2'
+import MonetizationOnIcon from '@mui/icons-material/MonetizationOn'
+import DiamondIcon from '@mui/icons-material/Diamond'
+import ConstructionIcon from '@mui/icons-material/Construction'
+import LocalHospitalIcon from '@mui/icons-material/LocalHospital'
+import RestaurantIcon from '@mui/icons-material/Restaurant'
+import NotificationsActiveIcon from '@mui/icons-material/NotificationsActive'
+import EmailIcon from '@mui/icons-material/Email'
+import FlashOnIcon from '@mui/icons-material/FlashOn'
+import AccountBalanceIcon from '@mui/icons-material/AccountBalance'
+import GroupAddIcon from '@mui/icons-material/GroupAdd'
+import SyncAltIcon from '@mui/icons-material/SyncAlt'
+import HandymanIcon from '@mui/icons-material/Handyman'
 import ExpandLessIcon from '@mui/icons-material/ExpandLess'
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore'
+import AddIcon from '@mui/icons-material/Add'
 import { ErrorType, ActionType, LogLevel } from "../types.js"
 
-// Hierarchical Category and Subcategory Taxonomy
-const CATEGORIES = [
+// Exact Categories and Sections matching EmpireAutomation
+const SIDEBAR_STRUCTURE = [
     {
         id: 'attacks',
         label: 'ATTACKS & FARMING',
-        icon: <MilitaryTechIcon fontSize="small" />,
-        subcategories: [
-            { id: 'all_attacks', label: 'All Attacks' },
-            { id: 'barrons', label: 'Robber Baron Castles', match: ['barron'] },
-            { id: 'fortresses', label: 'Kingdom Fortresses', match: ['fortress'] },
-            { id: 'storm', label: 'Storm Islands', match: ['stormfort', 'stormri'] },
-            { id: 'events', label: 'Invasions & LTPE', match: ['nomad', 'samurai', 'khan', 'berimondinvasion'] }
+        items: [
+            {
+                id: 'barrons',
+                label: 'Robber Baron Castles',
+                icon: <CastleIcon fontSize="small" />,
+                match: ['barron']
+            },
+            {
+                id: 'storm_bot',
+                label: 'Storm Bot',
+                icon: <FlashOnIcon fontSize="small" />,
+                match: ['stormfort', 'stormri']
+            },
+            {
+                id: 'fortress_bot',
+                label: 'Fortress Bot',
+                icon: <AccountBalanceIcon fontSize="small" />,
+                match: ['fortress']
+            },
+            {
+                id: 'events_bot',
+                label: 'Invasions & LTPE',
+                icon: <MilitaryTechIcon fontSize="small" />,
+                match: ['nomad', 'samurai', 'khan', 'berimondinvasion']
+            }
         ]
     },
     {
         id: 'production',
-        label: 'PRODUCTION & RECRUITING',
-        icon: <CastleIcon fontSize="small" />,
-        subcategories: [
-            { id: 'all_prod', label: 'All Production' },
-            { id: 'recruit', label: 'Troop Recruitment', match: ['recruit'] },
-            { id: 'tools', label: 'Tool & Equipment Crafting', match: ['tool', 'sellstored'] }
+        label: 'PRODUCTION & BUILDING',
+        items: [
+            {
+                id: 'recruiting',
+                label: 'Recruiting',
+                icon: <GroupAddIcon fontSize="small" />,
+                match: ['recruit']
+            },
+            {
+                id: 'tool_production',
+                label: 'Tool Production',
+                icon: <HandymanIcon fontSize="small" />,
+                match: ['toolbuild']
+            },
+            {
+                id: 'components',
+                label: 'Components',
+                icon: <ConstructionIcon fontSize="small" />,
+                match: ['producecomponents', 'component']
+            }
         ]
     },
     {
         id: 'resources',
-        label: 'RESOURCES & LOGISTICS',
-        icon: <Inventory2Icon fontSize="small" />,
-        subcategories: [
-            { id: 'all_res', label: 'All Logistics' },
-            { id: 'storm_supplies', label: 'Storm Logistics & Food', match: ['foodsendstorm', 'resourcesendstorm', 'meadreplacestorm'] },
-            { id: 'kingdom_events', label: 'Kingdom & Events Donate', match: ['colossus', 'berimondkingdom'] },
-            { id: 'hospital_feast', label: 'Feast & Maintenance', match: ['feast', 'hospital'] }
+        label: 'RESOURCES & TROOPS',
+        items: [
+            {
+                id: 'resource_logistics',
+                label: 'Resource Logistics',
+                icon: <SyncAltIcon fontSize="small" />,
+                match: ['foodsendstorm', 'resourcesendstorm', 'meadreplacestorm', 'resourcetransfer']
+            },
+            {
+                id: 'feast',
+                label: 'Feast',
+                icon: <RestaurantIcon fontSize="small" />,
+                match: ['feast']
+            },
+            {
+                id: 'hospital',
+                label: 'Military Hospital',
+                icon: <LocalHospitalIcon fontSize="small" />,
+                match: ['hospital']
+            },
+            {
+                id: 'events_donate',
+                label: 'Events & Kingdom Donate',
+                icon: <Inventory2Icon fontSize="small" />,
+                match: ['colossus', 'berimondkingdom']
+            }
+        ]
+    },
+    {
+        id: 'shops',
+        label: 'SHOPS, CURRENCY & EQ...',
+        items: [
+            {
+                id: 'coin_spender',
+                label: 'Coin Spender',
+                icon: <MonetizationOnIcon fontSize="small" />,
+                match: ['coinspender']
+            },
+            {
+                id: 'equipment',
+                label: 'Equipment',
+                icon: <DiamondIcon fontSize="small" />,
+                match: ['sellstoredequipment', 'equipment']
+            }
         ]
     },
     {
         id: 'defense',
         label: 'DEFENSE & MESSAGES',
-        icon: <ShieldIcon fontSize="small" />,
-        subcategories: [
-            { id: 'all_def', label: 'All Defense' },
-            { id: 'troop_dodge', label: 'Troop Dodge / Saving', match: ['dodge'] },
-            { id: 'alerts', label: 'Incoming Alerts & Discord', match: ['incoming', 'defense', 'alert'] }
+        items: [
+            {
+                id: 'castle_defense',
+                label: 'Castle Defense',
+                icon: <ShieldIcon fontSize="small" />,
+                match: ['dodge', 'castledefense']
+            },
+            {
+                id: 'alerts',
+                label: 'Alerts',
+                icon: <NotificationsActiveIcon fontSize="small" />,
+                match: ['incoming', 'alert']
+            },
+            {
+                id: 'messages',
+                label: 'Messages',
+                icon: <EmailIcon fontSize="small" />,
+                match: ['message', 'chat', 'slash']
+            }
         ]
     },
     {
-        id: 'utils',
-        label: 'UTILITIES & SYSTEM',
-        icon: <BuildIcon fontSize="small" />,
-        subcategories: [
-            { id: 'all_utils', label: 'All Utilities' },
-            { id: 'skips', label: 'Time Skips Automation', match: ['skip'] },
-            { id: 'automation', label: 'Timers & Shutoff', match: ['shutoff', 'interval', 'timer', 'misc', 'commander'] }
+        id: 'system',
+        label: 'SYSTEM & UTILITIES',
+        items: [
+            {
+                id: 'skips',
+                label: 'Time Skips',
+                icon: <BuildIcon fontSize="small" />,
+                match: ['skip']
+            },
+            {
+                id: 'timers',
+                label: 'Timers & Maintenance',
+                icon: <BuildIcon fontSize="small" />,
+                match: ['shutoff', 'interval', 'misc', 'commander', 'help']
+            }
         ]
     }
 ]
-
-// Identify the parent Category ID for a plugin
-function getCategoryForPlugin(key) {
-    const k = key.toLowerCase()
-    if (k.includes('attack') || k.includes('barron') || k.includes('fortress') || k.includes('khan') || k.includes('nomad') || k.includes('samurai') || k.includes('storm')) {
-        if (!k.includes('sendstorm') && !k.includes('replacestorm')) return 'attacks'
-    }
-    if (k.includes('recruit') || k.includes('tool') || k.includes('sellstored')) return 'production'
-    if (k.includes('food') || k.includes('send') || k.includes('resource') || k.includes('colossus') || k.includes('feast') || k.includes('berimondkingdom')) return 'resources'
-    if (k.includes('dodge') || k.includes('incoming') || k.includes('defense') || k.includes('shield')) return 'defense'
-    return 'utils'
-}
-
-// Identify the Subcategory ID for a plugin
-function getSubcategoryForPlugin(key, categoryId) {
-    const k = key.toLowerCase()
-    const cat = CATEGORIES.find(c => c.id === categoryId)
-    if (!cat) return 'all'
-
-    for (const sub of cat.subcategories) {
-        if (sub.match && sub.match.some(m => k.includes(m))) {
-            return sub.id
-        }
-    }
-    return cat.subcategories[1]?.id || 'all'
-}
 
 function PluginOptionField({ option, userPlugins, pluginKey, channels, __ }) {
     userPlugins[pluginKey] ??= {}
@@ -192,9 +270,8 @@ function SectionCard({ title, subtitle, children }) {
 }
 
 export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, __, languageCode, channels }) {
-    const [selectedCategory, setSelectedCategory] = React.useState('attacks')
-    const [selectedSubcategory, setSelectedSubcategory] = React.useState('all_attacks')
-    const [openCategories, setOpenCategories] = React.useState({ attacks: true })
+    const [selectedItemId, setSelectedItemId] = React.useState('barrons')
+    const [collapsedSections, setCollapsedSections] = React.useState({})
     const [isRunning, setIsRunning] = React.useState(Boolean(bot.state))
     const [logs, setLogs] = React.useState([])
     const [isStreaming, setIsStreaming] = React.useState(true)
@@ -246,38 +323,29 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
         ws.send(JSON.stringify([ErrorType.Success, ActionType.SetUser, bot]))
     }
 
-    const toggleCategoryExpand = (catId) => {
-        setOpenCategories(prev => ({ ...prev, [catId]: !prev[catId] }))
-        setSelectedCategory(catId)
-        const cat = CATEGORIES.find(c => c.id === catId)
-        if (cat?.subcategories?.[0]) {
-            setSelectedSubcategory(cat.subcategories[0].id)
+    const toggleSection = (sectionId) => {
+        setCollapsedSections(prev => ({ ...prev, [sectionId]: !prev[sectionId] }))
+    }
+
+    // Find the currently active menu item
+    let activeItemObj = null
+    let activeSectionObj = null
+    for (const section of SIDEBAR_STRUCTURE) {
+        for (const item of section.items) {
+            if (item.id === selectedItemId) {
+                activeItemObj = item
+                activeSectionObj = section
+                break
+            }
         }
     }
 
-    // Filter plugins for active sidebar category and subcategory
-    const activePlugins = plugins.filter(p => {
-        const catId = getCategoryForPlugin(p.key)
-        if (catId !== selectedCategory) return false
-
-        const activeCatObj = CATEGORIES.find(c => c.id === selectedCategory)
-        const activeSubObj = activeCatObj?.subcategories.find(s => s.id === selectedSubcategory)
-
-        if (!activeSubObj || activeSubObj.id.startsWith('all_')) return true
-        return activeSubObj.match.some(m => p.key.toLowerCase().includes(m))
+    // Filter plugins corresponding to the selected sidebar item
+    const matchingPlugins = plugins.filter(p => {
+        if (!activeItemObj || !activeItemObj.match) return false
+        const k = p.key.toLowerCase()
+        return activeItemObj.match.some(m => k.includes(m))
     })
-
-    // Count badges per category
-    const categoryCounts = React.useMemo(() => {
-        const counts = {}
-        CATEGORIES.forEach(c => {
-            counts[c.id] = plugins.filter(p => getCategoryForPlugin(p.key) === c.id).length
-        })
-        return counts
-    }, [plugins])
-
-    const currentCategoryObj = CATEGORIES.find(c => c.id === selectedCategory)
-    const currentSubcategoryObj = currentCategoryObj?.subcategories.find(s => s.id === selectedSubcategory)
 
     return (
         <Box className="ea-container">
@@ -292,11 +360,11 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                             {bot.name}
                         </Typography>
                         <Typography sx={{ color: '#64748b', fontSize: '0.82rem' }}>
-                            {currentCategoryObj?.label} &gt; {currentSubcategoryObj?.label}
+                            {activeSectionObj?.label} &gt; {activeItemObj?.label}
                         </Typography>
                     </Breadcrumbs>
                     <Typography variant="body2" sx={{ color: '#64748b' }}>
-                        Manage your bot's configuration, grouped subcategories, and active routines.
+                        Manage your bot's configuration, modules, templates, and settings.
                     </Typography>
                 </Box>
             </Box>
@@ -353,118 +421,147 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                 </Box>
             </Card>
 
-            {/* Layout: Hierarchical Sidebar + Main Workspace */}
+            {/* Layout: Sidebar + Main Workspace (Matching Screenshot) */}
             <Box className="ea-bot-layout">
-                {/* Left Modular Sidebar with Nested Subcategories */}
-                <Box className="ea-bot-sidebar" sx={{ width: 280 }}>
-                    <List disablePadding>
-                        {CATEGORIES.map(cat => {
-                            const isCatActive = selectedCategory === cat.id
-                            const isExpanded = Boolean(openCategories[cat.id])
-
-                            return (
-                                <Box key={cat.id} sx={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                    {/* Main Category Header Button */}
-                                    <ListItemButton
-                                        onClick={() => toggleCategoryExpand(cat.id)}
+                {/* Left Modular Sidebar with Exactly Styled Sections */}
+                <Box
+                    className="ea-bot-sidebar"
+                    sx={{
+                        width: 250,
+                        bgcolor: '#0f1723',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                        borderRadius: '12px',
+                        overflow: 'hidden',
+                        p: 1
+                    }}
+                >
+                    {SIDEBAR_STRUCTURE.map(section => {
+                        const isCollapsed = Boolean(collapsedSections[section.id])
+                        return (
+                            <Box key={section.id} sx={{ mb: 1.5 }}>
+                                {/* Category Header */}
+                                <Box
+                                    onClick={() => toggleSection(section.id)}
+                                    sx={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        px: 1,
+                                        py: 0.6,
+                                        cursor: 'pointer',
+                                        color: '#94a3b8',
+                                        userSelect: 'none',
+                                        '&:hover': { color: '#e2e8f0' }
+                                    }}
+                                >
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                                        {isCollapsed ? (
+                                            <ExpandMoreIcon sx={{ fontSize: '0.95rem', color: '#64748b' }} />
+                                        ) : (
+                                            <ExpandLessIcon sx={{ fontSize: '0.95rem', color: '#64748b' }} />
+                                        )}
+                                        <Typography sx={{ fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                                            {section.label}
+                                        </Typography>
+                                    </Box>
+                                    <Chip
+                                        label={section.items.length}
+                                        size="small"
                                         sx={{
-                                            py: 1.2,
-                                            px: 2,
-                                            borderLeft: `3px solid ${isCatActive ? '#3b82f6' : 'transparent'}`,
-                                            bgcolor: isCatActive ? 'rgba(59, 130, 246, 0.08)' : 'transparent',
-                                            '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.04)' }
+                                            height: 16,
+                                            fontSize: '0.6rem',
+                                            fontWeight: 800,
+                                            bgcolor: '#1e293b',
+                                            color: '#60a5fa'
                                         }}
-                                    >
-                                        <ListItemIcon sx={{ color: isCatActive ? '#3b82f6' : '#64748b', minWidth: 30 }}>
-                                            {cat.icon}
-                                        </ListItemIcon>
-                                        <ListItemText
-                                            primary={cat.label}
-                                            primaryTypographyProps={{
-                                                fontSize: '0.76rem',
-                                                fontWeight: 800,
-                                                color: isCatActive ? '#f8fafc' : '#94a3b8',
-                                                letterSpacing: '0.04em'
-                                            }}
-                                        />
-                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
-                                            <Chip
-                                                label={categoryCounts[cat.id] || 0}
-                                                size="small"
-                                                sx={{
-                                                    height: 18,
-                                                    fontSize: '0.62rem',
-                                                    fontWeight: 700,
-                                                    bgcolor: isCatActive ? 'rgba(59, 130, 246, 0.2)' : 'rgba(255,255,255,0.06)',
-                                                    color: isCatActive ? '#38bdf8' : '#64748b'
-                                                }}
-                                            />
-                                            {isExpanded ? <ExpandLessIcon sx={{ fontSize: '1.1rem', color: '#64748b' }} /> : <ExpandMoreIcon sx={{ fontSize: '1.1rem', color: '#64748b' }} />}
-                                        </Box>
-                                    </ListItemButton>
-
-                                    {/* Subcategory Items */}
-                                    {isExpanded && (
-                                        <List disablePadding sx={{ bgcolor: 'rgba(0, 0, 0, 0.25)', py: 0.5 }}>
-                                            {cat.subcategories.map(sub => {
-                                                const isSubSelected = isCatActive && selectedSubcategory === sub.id
-                                                return (
-                                                    <ListItemButton
-                                                        key={sub.id}
-                                                        onClick={() => {
-                                                            setSelectedCategory(cat.id)
-                                                            setSelectedSubcategory(sub.id)
-                                                        }}
-                                                        sx={{
-                                                            py: 0.8,
-                                                            pl: 5.5,
-                                                            pr: 2,
-                                                            bgcolor: isSubSelected ? 'rgba(59, 130, 246, 0.15)' : 'transparent',
-                                                            borderLeft: `2px solid ${isSubSelected ? '#38bdf8' : 'transparent'}`,
-                                                            '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.05)' }
-                                                        }}
-                                                    >
-                                                        <ListItemText
-                                                            primary={sub.label}
-                                                            primaryTypographyProps={{
-                                                                fontSize: '0.74rem',
-                                                                fontWeight: isSubSelected ? 700 : 500,
-                                                                color: isSubSelected ? '#38bdf8' : '#cbd5e1'
-                                                            }}
-                                                        />
-                                                    </ListItemButton>
-                                                )
-                                            })}
-                                        </List>
-                                    )}
+                                    />
                                 </Box>
-                            )
-                        })}
-                    </List>
+
+                                {/* Sub Items */}
+                                {!isCollapsed && (
+                                    <List disablePadding sx={{ mt: 0.4 }}>
+                                        {section.items.map(item => {
+                                            const isSelected = selectedItemId === item.id
+                                            return (
+                                                <ListItemButton
+                                                    key={item.id}
+                                                    onClick={() => setSelectedItemId(item.id)}
+                                                    sx={{
+                                                        py: 0.9,
+                                                        px: 1.2,
+                                                        mb: 0.3,
+                                                        borderRadius: '8px',
+                                                        bgcolor: isSelected ? 'rgba(37, 99, 235, 0.22)' : 'transparent',
+                                                        border: isSelected ? '1px solid rgba(59, 130, 246, 0.4)' : '1px solid transparent',
+                                                        '&:hover': {
+                                                            bgcolor: isSelected ? 'rgba(37, 99, 235, 0.25)' : 'rgba(255, 255, 255, 0.04)'
+                                                        }
+                                                    }}
+                                                >
+                                                    <ListItemIcon sx={{ color: isSelected ? '#60a5fa' : '#64748b', minWidth: 28 }}>
+                                                        {item.icon}
+                                                    </ListItemIcon>
+                                                    <ListItemText
+                                                        primary={item.label}
+                                                        primaryTypographyProps={{
+                                                            fontSize: '0.78rem',
+                                                            fontWeight: isSelected ? 700 : 500,
+                                                            color: isSelected ? '#f8fafc' : '#cbd5e1'
+                                                        }}
+                                                    />
+                                                </ListItemButton>
+                                            )
+                                        })}
+                                    </List>
+                                )}
+                            </Box>
+                        )
+                    })}
+
+                    <Box sx={{ pt: 1, borderTop: '1px solid rgba(255, 255, 255, 0.06)' }}>
+                        <Button
+                            fullWidth
+                            size="small"
+                            startIcon={<AddIcon sx={{ fontSize: '0.9rem !important' }} />}
+                            onClick={() => alert("All available modules are actively listed.")}
+                            sx={{
+                                color: '#94a3b8',
+                                textTransform: 'none',
+                                fontSize: '0.75rem',
+                                justifyContent: 'flex-start',
+                                px: 1.5,
+                                '&:hover': { color: '#f8fafc', bgcolor: 'rgba(255,255,255,0.04)' }
+                            }}
+                        >
+                            Manage functions
+                        </Button>
+                    </Box>
                 </Box>
 
                 {/* Main Content Area */}
                 <Box className="ea-bot-content">
-                    {/* Header of Active Subcategory */}
-                    <Box sx={{ mb: 1, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Box sx={{ mb: 1.5, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <Box>
-                            <Typography variant="h6" sx={{ fontWeight: 800, color: '#f8fafc', fontSize: '1.1rem' }}>
-                                {currentSubcategoryObj?.label || currentCategoryObj?.label}
+                            <Typography variant="h6" sx={{ fontWeight: 800, color: '#f8fafc', fontSize: '1.15rem' }}>
+                                {activeItemObj?.label}
                             </Typography>
                             <Typography variant="caption" sx={{ color: '#94a3b8' }}>
-                                Showing {activePlugins.length} configured module(s)
+                                Section: {activeSectionObj?.label} • {matchingPlugins.length} active module(s)
                             </Typography>
                         </Box>
                     </Box>
 
-                    {activePlugins.length === 0 ? (
-                        <Card className="ea-card">
-                            <Typography variant="body2" sx={{ color: '#94a3b8' }}>
-                                No plugins registered in this subcategory.
+                    {matchingPlugins.length === 0 ? (
+                        <Card className="ea-card" sx={{ p: 4, textAlign: 'center' }}>
+                            <Typography variant="subtitle2" sx={{ color: '#f8fafc', mb: 0.5 }}>
+                                {activeItemObj?.label} module is planned
+                            </Typography>
+                            <Typography variant="caption" sx={{ color: '#64748b' }}>
+                                This function belongs to the next release phase and will be populated with routine controls.
                             </Typography>
                         </Card>
                     ) : (
-                        activePlugins.map(plugin => {
+                        matchingPlugins.map(plugin => {
                             bot.plugins[plugin.key] ??= {}
                             const isEnabled = Boolean(bot.plugins[plugin.key]?.state)
 
@@ -518,7 +615,7 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                         })
                     )}
 
-                    {/* Docked Bot Monitoring & Terminal at the Bottom (Matching PDF Page 3) */}
+                    {/* Docked Bot Monitoring & Terminal at the Bottom */}
                     <Card className="ea-card" sx={{ mt: 2 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1.5, mb: 1.5, borderBottom: '1px solid var(--border-subtle)' }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
