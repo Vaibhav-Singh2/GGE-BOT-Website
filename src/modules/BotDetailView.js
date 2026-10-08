@@ -20,7 +20,11 @@ import {
     DialogContent,
     DialogActions,
     Snackbar,
-    Alert
+    Alert,
+    FormControl,
+    InputLabel,
+    Select,
+    MenuItem
 } from '@mui/material'
 import ArrowBackIcon from '@mui/icons-material/ArrowBack'
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
@@ -53,10 +57,54 @@ import FileDownloadIcon from '@mui/icons-material/FileDownload'
 import FileUploadIcon from '@mui/icons-material/FileUpload'
 import BookmarkBorderIcon from '@mui/icons-material/BookmarkBorder'
 import RestartAltIcon from '@mui/icons-material/RestartAlt'
+import ManageAccountsIcon from '@mui/icons-material/ManageAccounts'
 import { ErrorType, ActionType, LogLevel } from "../types.js"
+import settings from '../settings.json'
+
+// Parse instances from 1.xml for GGE Server selection
+let servers = new DOMParser()
+    .parseFromString(await (await fetch(`${window.location.protocol === 'https:' ? "https" : "http"}://${window.location.hostname}:${settings.port ?? window.location.port}/1.xml`)).text(), "text/xml")
+let instances = []
+let _instances = servers.getElementsByTagName("instance")
+
+for (var key in _instances) {
+    let obj = _instances[key]
+    let server, zone, instanceLocaId, instanceName
+    for (var key2 in obj.childNodes) {
+        let obj2 = obj.childNodes[key2]
+        switch (obj2.nodeName) {
+            case "server": server = obj2.childNodes[0].nodeValue; break
+            case "zone": zone = obj2.childNodes[0].nodeValue; break
+            case "instanceLocaId": instanceLocaId = obj2.childNodes[0].nodeValue; break
+            case "instanceName": instanceName = obj2.childNodes[0].nodeValue; break
+            default:
+        }
+    }
+    if (instanceLocaId)
+        instances.push({ id: obj.getAttribute("value"), server, zone, instanceLocaId, instanceName })
+}
+instances.push({
+    id: 100 + 3,
+    server: "ep-live-mz-nw2-game.goodgamestudios.com",
+    zone: "EmpireExSP_3",
+    instanceLocaId: "SP",
+    instanceName: "3"
+})
 
 // Sidebar Structure with Master "PLUGINS & MODULES" category at the top
 const SIDEBAR_STRUCTURE = [
+    {
+        id: 'account_manager',
+        label: 'ACCOUNT & SERVER',
+        items: [
+            {
+                id: 'account_config_item',
+                label: 'GGE Account Config',
+                icon: <ManageAccountsIcon fontSize="small" />,
+                isAccountConfig: true
+            }
+        ]
+    },
     {
         id: 'plugins_manager',
         label: 'PLUGINS & MANAGER',
@@ -336,10 +384,25 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
     const [draftPlugins, setDraftPlugins] = React.useState(() => JSON.parse(JSON.stringify(bot.plugins || {})))
     const [savedBaseline, setSavedBaseline] = React.useState(() => JSON.stringify(bot.plugins || {}))
 
+    // Client-side staged account credentials & server configuration
+    const [draftAccount, setDraftAccount] = React.useState(() => ({
+        name: bot.name || '',
+        pass: '',
+        server: bot.server ?? instances[0]?.id,
+        externalEvent: Boolean(bot.externalEvent)
+    }))
+    const [savedAccountBaseline, setSavedAccountBaseline] = React.useState(() => JSON.stringify({
+        name: bot.name || '',
+        pass: '',
+        server: bot.server ?? instances[0]?.id,
+        externalEvent: Boolean(bot.externalEvent)
+    }))
+
     // Compare draft against baseline
     const hasUnsavedChanges = React.useMemo(() => {
-        return JSON.stringify(draftPlugins) !== savedBaseline
-    }, [draftPlugins, savedBaseline])
+        return JSON.stringify(draftPlugins) !== savedBaseline ||
+            JSON.stringify(draftAccount) !== savedAccountBaseline
+    }, [draftPlugins, savedBaseline, draftAccount, savedAccountBaseline])
 
     // Load saved templates from localStorage on mount
     React.useEffect(() => {
@@ -388,15 +451,31 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
     // Commit staged draft changes to backend
     const handleSave = () => {
         bot.plugins = JSON.parse(JSON.stringify(draftPlugins))
+        bot.name = draftAccount.name
+        bot.server = draftAccount.server
+        bot.externalEvent = draftAccount.externalEvent
+        if (draftAccount.pass) {
+            bot.pass = draftAccount.pass
+        }
         ws.send(JSON.stringify([ErrorType.Success, ActionType.SetUser, bot]))
         setSavedBaseline(JSON.stringify(draftPlugins))
-        setFeedbackMsg("Bot configuration saved successfully to server!")
+        const resetAcct = {
+            name: draftAccount.name,
+            pass: '',
+            server: draftAccount.server,
+            externalEvent: draftAccount.externalEvent
+        }
+        setDraftAccount(resetAcct)
+        setSavedAccountBaseline(JSON.stringify(resetAcct))
+        setFeedbackMsg("Bot configuration and account details saved successfully to server!")
     }
 
     // Discard draft changes and reset back to last saved configuration
     const handleReset = () => {
-        const reverted = JSON.parse(savedBaseline)
-        setDraftPlugins(reverted)
+        const revertedPlugins = JSON.parse(savedBaseline)
+        const revertedAcct = JSON.parse(savedAccountBaseline)
+        setDraftPlugins(revertedPlugins)
+        setDraftAccount(revertedAcct)
         setFeedbackMsg("Changes reverted to last saved state.")
     }
 
@@ -636,10 +715,10 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
     }
 
     // Filter which sidebar categories/items should display:
-    // 1. "PLUGINS & MANAGER" is ALWAYS visible.
+    // 1. "ACCOUNT & SERVER" and "PLUGINS & MANAGER" are ALWAYS visible.
     // 2. An item is visible ONLY if at least one matching plugin is ENABLED in draftPlugins.
     const visibleSidebarStructure = SIDEBAR_STRUCTURE.map(section => {
-        if (section.id === 'plugins_manager') return section
+        if (section.id === 'account_manager' || section.id === 'plugins_manager') return section
 
         const visibleItems = section.items.filter(item => {
             if (!item.match) return false
@@ -964,7 +1043,7 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                             </Box>
 
                             {/* Grouped hierarchically by Section and Sub-Categories */}
-                            {SIDEBAR_STRUCTURE.filter(sec => sec.id !== 'plugins_manager').map(section => {
+                            {SIDEBAR_STRUCTURE.filter(sec => sec.id !== 'plugins_manager' && sec.id !== 'account_manager').map(section => {
                                 // Collect all items that have matching plugins
                                 const subCategories = section.items.map(item => {
                                     const itemPlugins = plugins.filter(plugin => {
@@ -979,8 +1058,14 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
 
                                 if (subCategories.length === 0) return null
 
-                                const totalPlugins = subCategories.reduce((acc, sub) => acc + sub.plugins.length, 0)
-                                const activeCount = subCategories.reduce((acc, sub) => acc + sub.plugins.filter(p => Boolean(draftPlugins[p.key]?.state)).length, 0)
+                                const totalPlugins = subCategories.reduce((acc, sub) => acc + (sub.id === 'barrons' ? 1 : sub.plugins.length), 0)
+                                const activeCount = subCategories.reduce((acc, sub) => {
+                                    if (sub.id === 'barrons') {
+                                        const hasAny = sub.plugins.some(p => Boolean(draftPlugins[p.key]?.state))
+                                        return acc + (hasAny ? 1 : 0)
+                                    }
+                                    return acc + sub.plugins.filter(p => Boolean(draftPlugins[p.key]?.state)).length
+                                }, 0)
 
                                 return (
                                     <Box key={section.id} sx={{ mb: 3.5 }}>
@@ -1005,7 +1090,12 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                                         {/* Sub-Categories */}
                                         <Box sx={{ pl: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
                                             {subCategories.map(sub => {
-                                                const subActiveCount = sub.plugins.filter(p => Boolean(draftPlugins[p.key]?.state)).length
+                                                const isBarronsSub = sub.id === 'barrons'
+                                                const subActiveCount = isBarronsSub
+                                                    ? (sub.plugins.some(p => Boolean(draftPlugins[p.key]?.state)) ? 1 : 0)
+                                                    : sub.plugins.filter(p => Boolean(draftPlugins[p.key]?.state)).length
+                                                const subTotalCount = isBarronsSub ? 1 : sub.plugins.length
+
                                                 return (
                                                     <Box key={sub.id} sx={{ bgcolor: 'rgba(255, 255, 255, 0.015)', p: 1.5, borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.04)' }}>
                                                         {/* Sub-Category Subheader */}
@@ -1019,7 +1109,7 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                                                                 </Typography>
                                                             </Box>
                                                             <Chip
-                                                                label={`${subActiveCount} / ${sub.plugins.length}`}
+                                                                label={`${subActiveCount} / ${subTotalCount}`}
                                                                 size="small"
                                                                 sx={{
                                                                     height: 18,
@@ -1033,63 +1123,126 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
 
                                                         {/* Plugin Rows inside Sub-Category */}
                                                         <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                                                            {sub.plugins.map(plugin => {
-                                                                const isPluginActive = Boolean(draftPlugins[plugin.key]?.state)
-                                                                return (
-                                                                    <Box
-                                                                        key={plugin.key}
-                                                                        sx={{
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            justifyContent: 'space-between',
-                                                                            py: 0.9,
-                                                                            px: 1,
-                                                                            borderRadius: '4px',
-                                                                            transition: 'background-color 0.15s',
-                                                                            '&:hover': {
-                                                                                bgcolor: 'rgba(255, 255, 255, 0.025)'
-                                                                            },
-                                                                            borderBottom: '1px solid rgba(255, 255, 255, 0.02)'
-                                                                        }}
-                                                                    >
-                                                                        <Box sx={{ pr: 2 }}>
-                                                                            <Typography sx={{ fontSize: '0.84rem', fontWeight: 600, color: isPluginActive ? '#f8fafc' : '#94a3b8' }}>
-                                                                                {__(plugin.key)}
-                                                                            </Typography>
-                                                                            <Typography sx={{ fontSize: '0.72rem', color: '#64748b', display: 'block', mt: 0.1 }}>
-                                                                                {plugin.description || `Background routine for ${__(plugin.key)}.`}
-                                                                            </Typography>
-                                                                        </Box>
+                                                            {isBarronsSub ? (
+                                                                // Single unified switch for Robber Barron Castles
+                                                                (() => {
+                                                                    const isAnyActive = sub.plugins.some(p => Boolean(draftPlugins[p.key]?.state))
+                                                                    return (
+                                                                        <Box
+                                                                            key="unified_barrons"
+                                                                            sx={{
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                justifyContent: 'space-between',
+                                                                                py: 0.9,
+                                                                                px: 1,
+                                                                                borderRadius: '4px',
+                                                                                transition: 'background-color 0.15s',
+                                                                                '&:hover': {
+                                                                                    bgcolor: 'rgba(255, 255, 255, 0.025)'
+                                                                                },
+                                                                                borderBottom: '1px solid rgba(255, 255, 255, 0.02)'
+                                                                            }}
+                                                                        >
+                                                                            <Box sx={{ pr: 2 }}>
+                                                                                <Typography sx={{ fontSize: '0.84rem', fontWeight: 600, color: isAnyActive ? '#f8fafc' : '#94a3b8' }}>
+                                                                                    Robber Baron Castles (TowerBot)
+                                                                                </Typography>
+                                                                                <Typography sx={{ fontSize: '0.72rem', color: '#64748b', display: 'block', mt: 0.1 }}>
+                                                                                    Automated attacks against Robber Baron castles across all kingdoms. Configure specific kingdoms in the Robber Baron section.
+                                                                                </Typography>
+                                                                            </Box>
 
-                                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
-                                                                            <Chip
-                                                                                label={isPluginActive ? "Sidebar ON" : "Hidden"}
-                                                                                size="small"
-                                                                                sx={{
-                                                                                    height: 18,
-                                                                                    fontSize: '0.62rem',
-                                                                                    fontWeight: 600,
-                                                                                    bgcolor: isPluginActive ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
-                                                                                    color: isPluginActive ? '#10b981' : '#64748b',
-                                                                                    border: '1px solid',
-                                                                                    borderColor: isPluginActive ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255, 255, 255, 0.08)'
-                                                                                }}
-                                                                            />
-                                                                            <Switch
-                                                                                size="small"
-                                                                                checked={isPluginActive}
-                                                                                onChange={(_, checked) => handlePluginToggle(plugin.key, checked)}
-                                                                                sx={{
-                                                                                    '& .MuiSwitch-switchBase.Mui-checked': {
-                                                                                        color: '#38bdf8',
-                                                                                        '& + .MuiSwitch-track': { backgroundColor: '#0284c7' }
-                                                                                    }
-                                                                                }}
-                                                                            />
+                                                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
+                                                                                <Chip
+                                                                                    label={isAnyActive ? "Sidebar ON" : "Hidden"}
+                                                                                    size="small"
+                                                                                    sx={{
+                                                                                        height: 18,
+                                                                                        fontSize: '0.62rem',
+                                                                                        fontWeight: 600,
+                                                                                        bgcolor: isAnyActive ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
+                                                                                        color: isAnyActive ? '#10b981' : '#64748b',
+                                                                                        border: '1px solid',
+                                                                                        borderColor: isAnyActive ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255, 255, 255, 0.08)'
+                                                                                    }}
+                                                                                />
+                                                                                <Switch
+                                                                                    size="small"
+                                                                                    checked={isAnyActive}
+                                                                                    onChange={(_, checked) => {
+                                                                                        sub.plugins.forEach(p => handlePluginToggle(p.key, checked))
+                                                                                    }}
+                                                                                    sx={{
+                                                                                        '& .MuiSwitch-switchBase.Mui-checked': {
+                                                                                            color: '#38bdf8',
+                                                                                            '& + .MuiSwitch-track': { backgroundColor: '#0284c7' }
+                                                                                        }
+                                                                                    }}
+                                                                                />
+                                                                            </Box>
                                                                         </Box>
-                                                                    </Box>
-                                                                )
-                                                            })}
+                                                                    )
+                                                                })()
+                                                            ) : (
+                                                                sub.plugins.map(plugin => {
+                                                                    const isPluginActive = Boolean(draftPlugins[plugin.key]?.state)
+                                                                    return (
+                                                                        <Box
+                                                                            key={plugin.key}
+                                                                            sx={{
+                                                                                display: 'flex',
+                                                                                alignItems: 'center',
+                                                                                justifyContent: 'space-between',
+                                                                                py: 0.9,
+                                                                                px: 1,
+                                                                                borderRadius: '4px',
+                                                                                transition: 'background-color 0.15s',
+                                                                                '&:hover': {
+                                                                                    bgcolor: 'rgba(255, 255, 255, 0.025)'
+                                                                                },
+                                                                                borderBottom: '1px solid rgba(255, 255, 255, 0.02)'
+                                                                            }}
+                                                                        >
+                                                                            <Box sx={{ pr: 2 }}>
+                                                                                <Typography sx={{ fontSize: '0.84rem', fontWeight: 600, color: isPluginActive ? '#f8fafc' : '#94a3b8' }}>
+                                                                                    {__(plugin.key)}
+                                                                                </Typography>
+                                                                                <Typography sx={{ fontSize: '0.72rem', color: '#64748b', display: 'block', mt: 0.1 }}>
+                                                                                    {plugin.description || `Background routine for ${__(plugin.key)}.`}
+                                                                                </Typography>
+                                                                            </Box>
+
+                                                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexShrink: 0 }}>
+                                                                                <Chip
+                                                                                    label={isPluginActive ? "Sidebar ON" : "Hidden"}
+                                                                                    size="small"
+                                                                                    sx={{
+                                                                                        height: 18,
+                                                                                        fontSize: '0.62rem',
+                                                                                        fontWeight: 600,
+                                                                                        bgcolor: isPluginActive ? 'rgba(16, 185, 129, 0.12)' : 'transparent',
+                                                                                        color: isPluginActive ? '#10b981' : '#64748b',
+                                                                                        border: '1px solid',
+                                                                                        borderColor: isPluginActive ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255, 255, 255, 0.08)'
+                                                                                    }}
+                                                                                />
+                                                                                <Switch
+                                                                                    size="small"
+                                                                                    checked={isPluginActive}
+                                                                                    onChange={(_, checked) => handlePluginToggle(plugin.key, checked)}
+                                                                                    sx={{
+                                                                                        '& .MuiSwitch-switchBase.Mui-checked': {
+                                                                                            color: '#38bdf8',
+                                                                                            '& + .MuiSwitch-track': { backgroundColor: '#0284c7' }
+                                                                                        }
+                                                                                    }}
+                                                                                />
+                                                                            </Box>
+                                                                        </Box>
+                                                                    )
+                                                                })
+                                                            )}
                                                         </Box>
                                                     </Box>
                                                 )
@@ -1098,6 +1251,112 @@ export default function BotDetailView({ bot, plugins, usersStatus, ws, onBack, _
                                     </Box>
                                 )
                             })}
+                        </Box>
+                    ) : activeItemObj.isAccountConfig ? (
+                        /* GGE Account Credentials & Realm Settings */
+                        <Box>
+                            <Box sx={{ mb: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <Box>
+                                    <Typography variant="h6" sx={{ fontWeight: 800, color: '#f8fafc', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <ManageAccountsIcon sx={{ color: '#38bdf8' }} /> GGE Account & Server Settings
+                                    </Typography>
+                                    <Typography variant="caption" sx={{ color: '#94a3b8' }}>
+                                        Edit username, password credentials, and server realm for this game bot account.
+                                    </Typography>
+                                </Box>
+                            </Box>
+
+                            <SectionCard
+                                title="Game Account Credentials"
+                                subtitle="Configure the Goodgame Empire game username and authentication password used by the bot worker."
+                            >
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 1 }}>
+                                    <TextField
+                                        label="Account Username"
+                                        size="small"
+                                        fullWidth
+                                        value={draftAccount.name}
+                                        onChange={e => setDraftAccount(prev => ({ ...prev, name: e.target.value }))}
+                                        placeholder="GGE Ingame Username"
+                                        helperText="Username or email used to log into Goodgame Empire"
+                                        sx={{
+                                            '& .MuiOutlinedInput-root': {
+                                                bgcolor: '#0f151e',
+                                                borderRadius: '6px'
+                                            }
+                                        }}
+                                    />
+
+                                    <TextField
+                                        label="Password (leave blank to keep existing)"
+                                        type="password"
+                                        size="small"
+                                        fullWidth
+                                        value={draftAccount.pass}
+                                        onChange={e => setDraftAccount(prev => ({ ...prev, pass: e.target.value }))}
+                                        placeholder="••••••••••••"
+                                        helperText="Only fill this field if you want to update your game password"
+                                        sx={{
+                                            '& .MuiOutlinedInput-root': {
+                                                bgcolor: '#0f151e',
+                                                borderRadius: '6px'
+                                            }
+                                        }}
+                                    />
+                                </Box>
+                            </SectionCard>
+
+                            <SectionCard
+                                title="Server Realm & Event Options"
+                                subtitle="Select the game world instance / realm where your castle is established."
+                            >
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 1 }}>
+                                    <FormControl size="small" fullWidth>
+                                        <InputLabel id="gge-realm-select-label">Server / World Realm</InputLabel>
+                                        <Select
+                                            labelId="gge-realm-select-label"
+                                            value={draftAccount.server}
+                                            label="Server / World Realm"
+                                            onChange={e => setDraftAccount(prev => ({ ...prev, server: e.target.value }))}
+                                            sx={{
+                                                bgcolor: '#0f151e',
+                                                borderRadius: '6px'
+                                            }}
+                                        >
+                                            {instances.map((s, i) => (
+                                                <MenuItem key={i} value={s.id}>
+                                                    {__(s.instanceLocaId) + ' ' + s.instanceName + (s.zone ? ` (${s.zone})` : '')}
+                                                </MenuItem>
+                                            ))}
+                                        </Select>
+                                    </FormControl>
+
+                                    <Box sx={{ bgcolor: 'rgba(255, 255, 255, 0.02)', p: 1.5, borderRadius: '6px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                                        <FormControlLabel
+                                            control={
+                                                <Checkbox
+                                                    checked={Boolean(draftAccount.externalEvent)}
+                                                    onChange={e => setDraftAccount(prev => ({ ...prev, externalEvent: e.target.checked }))}
+                                                    sx={{
+                                                        color: '#64748b',
+                                                        '&.Mui-checked': { color: '#38bdf8' }
+                                                    }}
+                                                />
+                                            }
+                                            label={
+                                                <Box>
+                                                    <Typography variant="body2" sx={{ fontWeight: 600, color: '#f8fafc' }}>
+                                                        Outer Realms / Beyond The Horizon Event Account
+                                                    </Typography>
+                                                    <Typography variant="caption" sx={{ color: '#94a3b8' }}>
+                                                        Enable if this bot account is participating in a temporary global event server.
+                                                    </Typography>
+                                                </Box>
+                                            }
+                                        />
+                                    </Box>
+                                </Box>
+                            </SectionCard>
                         </Box>
                     ) : (
                         /* Module Details and Configuration Form */
