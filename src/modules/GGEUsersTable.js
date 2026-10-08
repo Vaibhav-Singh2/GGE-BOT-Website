@@ -1,109 +1,166 @@
 import * as React from 'react'
-import Table from '@mui/material/Table'
-import TableBody from '@mui/material/TableBody'
-import TableCell from '@mui/material/TableCell'
-import TableContainer from '@mui/material/TableContainer'
-import TableHead from '@mui/material/TableHead'
-import TableRow from '@mui/material/TableRow'
-import Paper from '@mui/material/Paper'
-import Button from '@mui/material/Button'
-import Backdrop from '@mui/material/Backdrop'
-import Checkbox from '@mui/material/Checkbox'
-import Box from '@mui/material/Box'
-import Typography from '@mui/material/Typography'
-import Menu from '@mui/material/Menu'
-import MenuItem from '@mui/material/MenuItem'
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableContainer,
+    TableHead,
+    TableRow,
+    Paper,
+    Button,
+    Backdrop,
+    Checkbox,
+    Box,
+    Typography,
+    Menu,
+    MenuItem,
+    Chip,
+    Tooltip,
+    IconButton,
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    DialogActions,
+    Grid
+} from '@mui/material'
 import LogoutIcon from '@mui/icons-material/Logout'
+import AddIcon from '@mui/icons-material/Add'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import PlayArrowIcon from '@mui/icons-material/PlayArrow'
+import StopIcon from '@mui/icons-material/Stop'
+import SettingsIcon from '@mui/icons-material/Settings'
+import TerminalIcon from '@mui/icons-material/Terminal'
+import InventoryIcon from '@mui/icons-material/Inventory'
+import LanguageIcon from '@mui/icons-material/Language'
+import DiscordIcon from '@mui/icons-material/SportsEsports'
+import CloseIcon from '@mui/icons-material/Close'
 
 import { ErrorType, ActionType, LogLevel } from "../types.js"
 import UserSettings from './userSettings'
 import settings from '../settings.json'
-import { Grid } from '@mui/material'
 
-function Log({ ws, __ }) {
+function LogModal({ ws, __, open, onClose, targetUser }) {
     const [currentLogs, setCurrentLogs] = React.useState([])
+    const logEndRef = React.useRef(null)
 
     React.useEffect(() => {
+        if (!open) return
         const logGrabber = msg => {
             let [err, action, obj] = JSON.parse(msg.data.toString())
+            if (Number(action) !== ActionType.GetLogs) return
+            if (Number(err) !== ErrorType.Success) return
 
-            if (Number(action) !== ActionType.GetLogs)
-                return
-
-            if (Number(err) !== ErrorType.Success)
-                return
-
-            setCurrentLogs(obj[0].splice(obj[1], obj[0].length - 1).concat(obj[0]).map((obj, index) => {
-                let items = obj[1].map(__).join("")
-                return <div key={index} style={{
-                    color: obj[0] === LogLevel.Error ? "red" :
-                        obj[0] === LogLevel.Warn ? "yellow" : "blue"
-                }}>{items}</div>
-            }
-            ).reverse())
+            setCurrentLogs(
+                obj[0]
+                    .splice(obj[1], obj[0].length - 1)
+                    .concat(obj[0])
+                    .map((item, index) => {
+                        let text = item[1].map(__).join("")
+                        let color = '#38bdf8'
+                        if (item[0] === LogLevel.Error) color = '#f43f5e'
+                        else if (item[0] === LogLevel.Warn) color = '#fbbf24'
+                        return { text, color, key: index }
+                    })
+                    .reverse()
+            )
         }
         ws.addEventListener("message", logGrabber)
         return () => ws.removeEventListener("message", logGrabber)
-
-    }, [ws, __])
+    }, [ws, __, open])
 
     return (
-        <Paper sx={{ overflow: 'auto' }}>
-            <div onClick={e => e.stopPropagation()} style={{maxHeight:"80vh",maxWidth:"80vw"}}>
-                <Typography variant="subtitle1" component="div" align='left' padding={"10px"}>
-                    {currentLogs}
-                </Typography>
-            </div>
-        </Paper>)
+        <Dialog
+            open={open}
+            onClose={onClose}
+            maxWidth="md"
+            fullWidth
+            PaperProps={{
+                className: 'glass-panel',
+                sx: { bgcolor: '#0b0f19', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px' }
+            }}
+        >
+            <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1.5, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <TerminalIcon sx={{ color: '#38bdf8' }} />
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#f8fafc' }}>
+                        Live Terminal {targetUser ? `- ${targetUser.name}` : ''}
+                    </Typography>
+                </Box>
+                <IconButton onClick={onClose} size="small" sx={{ color: 'rgba(255,255,255,0.4)' }}>
+                    <CloseIcon fontSize="small" />
+                </IconButton>
+            </DialogTitle>
+            <DialogContent sx={{ p: 2, height: '60vh', overflowY: 'auto' }}>
+                <Box className="console-log-box" sx={{ p: 2, minHeight: '100%' }}>
+                    {currentLogs.length === 0 ? (
+                        <Typography variant="body2" sx={{ color: '#64748b', fontStyle: 'italic' }}>
+                            Waiting for output messages...
+                        </Typography>
+                    ) : (
+                        currentLogs.map(l => (
+                            <Box key={l.key} sx={{ color: l.color, py: 0.3, wordBreak: 'break-all' }}>
+                                &gt; {l.text}
+                            </Box>
+                        ))
+                    )}
+                    <div ref={logEndRef} />
+                </Box>
+            </DialogContent>
+            <DialogActions sx={{ p: 1.5, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <Button onClick={onClose} sx={{ color: '#94a3b8', textTransform: 'none' }}>Close</Button>
+            </DialogActions>
+        </Dialog>
+    )
 }
-function Language({ languageCode, setLanguage }) {
+
+function LanguageSelector({ languageCode, setLanguage }) {
     const [anchorEl, setAnchorEl] = React.useState(null)
     const open = Boolean(anchorEl)
-    const handleClick = event => { setAnchorEl(event.currentTarget) }
-    const handleClose = () => { setAnchorEl(null) }
 
     return (
         <>
             <Button
-                id="basic-button"
-                aria-controls={open ? 'basic-menu' : undefined}
-                aria-haspopup="true"
-                aria-expanded={open ? 'true' : undefined}
-                onClick={handleClick}
+                variant="outlined"
+                size="small"
+                startIcon={<LanguageIcon sx={{ fontSize: '1rem !important' }} />}
+                onClick={e => setAnchorEl(e.currentTarget)}
+                sx={{
+                    height: 34,
+                    color: '#cbd5e1',
+                    borderColor: 'rgba(255,255,255,0.12)',
+                    borderRadius: '8px',
+                    textTransform: 'uppercase',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    '&:hover': { borderColor: 'rgba(255,255,255,0.3)', bgcolor: 'rgba(255,255,255,0.04)' }
+                }}
             >
                 {languageCode}
             </Button>
             <Menu
-                id="basic-menu"
                 anchorEl={anchorEl}
                 open={open}
-                onClose={handleClose}
+                onClose={() => setAnchorEl(null)}
                 slotProps={{
-                    list: {
-                        'aria-labelledby': 'basic-button',
-                    },
+                    paper: {
+                        sx: { bgcolor: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', mt: 0.5 }
+                    }
                 }}
             >
-                <MenuItem onClick={() => { setLanguage('en'); handleClose() }}>EN</MenuItem>
-                <MenuItem onClick={() => { setLanguage('pl'); handleClose() }}>PL</MenuItem>
-                <MenuItem onClick={() => { setLanguage('de'); handleClose() }}>DE</MenuItem>
-                <MenuItem onClick={() => { setLanguage('tr'); handleClose() }}>TR</MenuItem>
-                <MenuItem onClick={() => { setLanguage('ar'); handleClose() }}>AR</MenuItem>
-                <MenuItem onClick={() => { setLanguage('cs'); handleClose() }}>CS</MenuItem>
+                {['en', 'pl', 'de', 'tr', 'ar', 'cs'].map(lang => (
+                    <MenuItem key={lang} onClick={() => { setLanguage(lang); setAnchorEl(null) }} sx={{ fontSize: '0.8rem', textTransform: 'uppercase' }}>
+                        {lang}
+                    </MenuItem>
+                ))}
             </Menu>
         </>
     )
 }
 
-const assets = 
-    JSON.parse(await (await fetch(`//${window.location.hostname}:${settings.port ?? window.location.port}/assets.json`)).text())
+let assetsCache = null
 
-function Resources({ __, openResources: resources, languageCode }) {
-    if(!resources)
-        return <></>
-    
-    delete resources["coins"]
-    delete resources["rubies"]
+function ResourcesModal({ __, open, onClose, resources, languageCode }) {
+    if (!resources) return null
 
     const nameOverrides = {
         screws: "component1",
@@ -115,298 +172,501 @@ function Resources({ __, openResources: resources, languageCode }) {
         chains: "component7",
         metalPlates: "component8",
     }
+    const cleanRes = { ...resources }
+    delete cleanRes["coins"]
+    delete cleanRes["rubies"]
+
     for (const key in nameOverrides) {
-        const value = resources[key]
-        if(value) {
-            resources[nameOverrides[key]] = value
-            delete resources[key]
+        if (cleanRes[key]) {
+            cleanRes[nameOverrides[key]] = cleanRes[key]
+            delete cleanRes[key]
         }
     }
-    for (const key in resources) {
-        if([, 0, null].includes(resources[key])) {
-            delete resources[key]
-            continue
-        }
-        if (Number(resources[key])) {
-            const skipOverrides = {
-                "1MinSkip": 1,
-                "5MinSkip": 5,
-                "10MinSkip": 10,
-                "30MinSkip": 30,
-                "60MinSkip": 1,
-                "5HourSkip": 5,
-                "24HourSkip": 24,
-            }
-            const value = skipOverrides[key]
-            resources[key] = `${value? `${value}x` : ""}${new Intl.NumberFormat(languageCode, { notation: 'compact' }).format(resources[key])}`
-        }
-    }
-    const capitalizeFirstLetter = o =>
-         String(o).charAt(0).toLocaleUpperCase() + String(o).slice(1)
-    
+
+    const capitalizeFirstLetter = o => String(o).charAt(0).toLocaleUpperCase() + String(o).slice(1)
+
     return (
-        <Paper sx={{ overflow: 'auto' }}>
-            <div onClick={e => e.stopPropagation()} style={{maxHeight:"80vh",maxWidth:"80vw",}}>
-                <Grid container spacing={3} borderColor={"#323"} margin={"16px"}>
-                    {
-                        Object.entries(resources).map(([key, value], i) => {
-                            const jsonKey = capitalizeFirstLetter(key)
-                            return <Grid key={i}>
-                                <div style={{ 
-                                    justifyContent: "center", 
-                                    display: "flex", 
-                                    flexDirection:"column",  
-                                    alignItems:"center",
-                                    backgroundColor: "#211f1fff" }}>
-                                    <div style={{ maxHeight: "32px", maxWidth: "32px", overflowWrap: "break-word"}}>
-                                        <img onError={(e) => {
-                                            e.currentTarget.outerHTML = `<div style="overflow:hidden;max-height:100%;max-width:100%">${__(key)}</div>`
-                                        }} style={{ maxHeight: "100%", maxWidth: "100%"}} src={`//${window.location.hostname}:${settings.port ?? window.location.port}/ggeProxyEmpire5/default/assets/${assets[`Collectable_Currency_${jsonKey}`]}.webp`}></img>
-                                    </div>
-                                    <Typography variant="subtitle1" component="div" align='center' paddingTop={"16px"}>
-                                        {value}
+        <Dialog
+            open={open}
+            onClose={onClose}
+            maxWidth="md"
+            fullWidth
+            PaperProps={{
+                className: 'glass-panel',
+                sx: { bgcolor: '#0f172a', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '14px' }
+            }}
+        >
+            <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1.5, borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <InventoryIcon sx={{ color: '#38bdf8' }} />
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, color: '#f8fafc' }}>
+                        Kingdom Resources & Inventory
+                    </Typography>
+                </Box>
+                <IconButton onClick={onClose} size="small" sx={{ color: 'rgba(255,255,255,0.4)' }}>
+                    <CloseIcon fontSize="small" />
+                </IconButton>
+            </DialogTitle>
+            <DialogContent sx={{ p: 3 }}>
+                <Grid container spacing={2}>
+                    {Object.entries(cleanRes).map(([key, value], i) => {
+                        if ([, 0, null].includes(value)) return null
+                        const jsonKey = capitalizeFirstLetter(key)
+                        let formattedVal = value
+                        if (Number(value)) {
+                            formattedVal = new Intl.NumberFormat(languageCode, { notation: 'compact' }).format(value)
+                        }
+                        return (
+                            <Grid item xs={4} sm={3} md={2.4} key={i}>
+                                <Box
+                                    sx={{
+                                        p: 1.5,
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        alignItems: 'center',
+                                        borderRadius: '10px',
+                                        bgcolor: 'rgba(0,0,0,0.3)',
+                                        border: '1px solid rgba(255,255,255,0.05)'
+                                    }}
+                                >
+                                    <Box sx={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                        <img
+                                            alt={key}
+                                            style={{ maxHeight: '100%', maxWidth: '100%' }}
+                                            src={`//${window.location.hostname}:${settings.port ?? window.location.port}/ggeProxyEmpire5/default/assets/${assetsCache?.[`Collectable_Currency_${jsonKey}`]}.webp`}
+                                            onError={e => {
+                                                e.currentTarget.style.display = 'none'
+                                            }}
+                                        />
+                                    </Box>
+                                    <Typography variant="caption" sx={{ color: '#94a3b8', mt: 1, textAlign: 'center', fontSize: '0.72rem' }}>
+                                        {__(key)}
                                     </Typography>
-                                </div>
+                                    <Typography variant="body2" sx={{ fontWeight: 700, color: '#f8fafc', mt: 0.2 }}>
+                                        {formattedVal}
+                                    </Typography>
+                                </Box>
                             </Grid>
-                            })
-                    }
+                        )
+                    })}
                 </Grid>
-            </div>
-        </Paper>
+            </DialogContent>
+            <DialogActions sx={{ p: 1.5, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <Button onClick={onClose} sx={{ color: '#94a3b8', textTransform: 'none' }}>Close</Button>
+            </DialogActions>
+        </Dialog>
     )
 }
-function PlayerTable({ setLanguage, __, languageCode, rows, usersStatus, ws, channelInfo, handleSettingsOpen, handleLogOpen, setSelectedUser, setOpenSettings, handleResourcesOpen }) {
+
+export default function GGEUserTable({
+    setLanguage,
+    __,
+    languageCode,
+    rows,
+    usersStatus,
+    ws,
+    channelInfo,
+    plugins
+}) {
     const [selected, setSelected] = React.useState([])
-    const [open, setOpen] = React.useState(false)
+    const [openSettings, setOpenSettings] = React.useState(false)
+    const [selectedUser, setSelectedUser] = React.useState({})
+    const [logOpen, setLogOpen] = React.useState(false)
+    const [logTargetUser, setLogTargetUser] = React.useState(null)
+    const [resOpen, setResOpen] = React.useState(false)
+    const [resData, setResData] = React.useState(null)
+
+    React.useEffect(() => {
+        async function loadAssets() {
+            try {
+                assetsCache = JSON.parse(await (await fetch(`//${window.location.hostname}:${settings.port ?? window.location.port}/assets.json`)).text())
+            } catch (e) {
+                console.warn(e)
+            }
+        }
+        if (!assetsCache) loadAssets()
+    }, [])
+
     const handleSelectAllClick = event => {
         if (event.target.checked) {
-            const newSelected = rows.map(n => n.id)
-            setSelected(newSelected)
+            setSelected(rows.map(n => n.id))
             return
         }
         setSelected([])
     }
-    function get_cookie(name){
-    return document.cookie.split(';').some(c => {
-        return c.trim().startsWith(name + '=');
-    });
-}
+
     const logout = () => {
         document.cookie = "uuid="
         window.location.reload()
     }
 
-    return <TableContainer component={Paper}>
-        <Table sx={{ minWidth: 650 }} aria-label="simple table">
-            <TableHead>
-                <TableRow>
-                    <TableCell padding="checkbox">
-                        <Checkbox
-                            color="primary"
-                            checked={rows.length === selected.length}
-                            onClick={handleSelectAllClick}
-                            inputProps={{
-                                'aria-label': 'select all entries',
-                            }}
-                        />
-                    </TableCell>
-                    <TableCell align="left">{__("name")}</TableCell>
-                    <TableCell align="left" padding='none'>{__("plugins")}</TableCell>
-                    <TableCell>{__("status")}</TableCell>
-                    <TableCell align='right' padding='none' style={{ width: "max-content" }}>
-                        <Language setLanguage={setLanguage} languageCode={languageCode} />
-                        <Button
-                            style={{ margin: "10px", maxHeight: '32px', minHeight: '32px' }}
-                            onClick={async () =>
-                                window.open(`https://discord.com/oauth2/authorize?client_id=${channelInfo[0]}&permissions=8&response_type=code&redirect_uri=${window.location.protocol === 'https:' ? "https" : "http"}%3A%2F%2F${window.location.hostname}%3A${(settings.port ?? window.location.port) !== '' ? (settings.port ?? window.location.port) : window.location.protocol === 'https:' ? "443" : "80"}%2FdiscordAuth&integration_type=0&scope=identify+guilds.join+bot`, "_blank")}
-                        >{__("linkDiscord")}</Button>
-                        
-                        <Button style={{ maxWidth: '64px', maxHeight: '32px', minWidth: '32px', minHeight: '32px', marginRight: "10px" }} onClick={logout}><LogoutIcon/></Button>
-                        <Button style={{ maxWidth: '64px', maxHeight: '32px', minWidth: '32px', minHeight: '32px', marginRight: "10px" }} onClick={handleSettingsOpen}>+</Button>
-                    </TableCell>
-                </TableRow>
-            </TableHead>
-            <TableBody>
-                {rows.map((row, index) => {
-                    function PlayerRow() {
-                        let getEnabledPlugins = () => {
-                            let enabledPlugins = []
-                            Object.entries(row.plugins).forEach(([key, value]) => {
-                                if (Boolean(value.state) === true && Boolean(value.forced) !== true)
-                                    enabledPlugins.push(key)
-                                return
-                            })
-                            return enabledPlugins
-                        }
+    return (
+        <Box sx={{ p: { xs: 1.5, sm: 3 }, maxWidth: 1400, mx: 'auto' }}>
+            {/* Top Navigation & Stats Bar */}
+            <Paper
+                className="glass-panel"
+                elevation={0}
+                sx={{
+                    p: 2,
+                    mb: 3,
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    gap: 2
+                }}
+            >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    <Box
+                        sx={{
+                            width: 38,
+                            height: 38,
+                            borderRadius: '10px',
+                            background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 4px 14px rgba(2, 132, 199, 0.4)'
+                        }}
+                    >
+                        <Typography sx={{ fontWeight: 900, color: '#fff', fontSize: '1.1rem' }}>G</Typography>
+                    </Box>
+                    <Box>
+                        <Typography variant="h6" sx={{ fontWeight: 800, fontSize: '1.05rem', letterSpacing: '-0.02em', color: '#f8fafc' }}>
+                            GGE BOT OPS
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: '#64748b', display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                            <Box sx={{ width: 6, height: 6, borderRadius: '50%', bgcolor: '#10b981' }} />
+                            System Active • {rows.length} Accounts Connected
+                        </Typography>
+                    </Box>
+                </Box>
 
-                        const isItemSelected = selected.includes(row.id)
-                        const labelId = `enhanced-table-checkbox-${index}`
-                        const [state, setState] = React.useState(row.state)
-                        row.state = state
+                {/* Global Controls */}
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
+                    <Button
+                        variant="outlined"
+                        size="small"
+                        startIcon={<DiscordIcon sx={{ color: '#5865F2' }} />}
+                        onClick={() =>
+                            window.open(`https://discord.com/oauth2/authorize?client_id=${channelInfo[0]}&permissions=8&response_type=code&redirect_uri=${window.location.protocol === 'https:' ? "https" : "http"}%3A%2F%2F${window.location.hostname}%3A${(settings.port ?? window.location.port) !== '' ? (settings.port ?? window.location.port) : window.location.protocol === 'https:' ? "443" : "80"}%2FdiscordAuth&integration_type=0&scope=identify+guilds.join+bot`, "_blank")}
+                        sx={{
+                            height: 34,
+                            color: '#cbd5e1',
+                            borderColor: 'rgba(88, 101, 242, 0.3)',
+                            borderRadius: '8px',
+                            textTransform: 'none',
+                            fontSize: '0.8rem',
+                            fontWeight: 600,
+                            '&:hover': { borderColor: '#5865F2', bgcolor: 'rgba(88, 101, 242, 0.08)' }
+                        }}
+                    >
+                        {__("linkDiscord") || "Discord"}
+                    </Button>
 
-                        let status = usersStatus[row.id] ?? {}
+                    <LanguageSelector setLanguage={setLanguage} languageCode={languageCode} />
 
-                        return (<TableRow style={status?.hasError ? { border: "red solid 2px" } : {}}
-                            sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
+                    <Button
+                        variant="contained"
+                        size="small"
+                        startIcon={<AddIcon />}
+                        onClick={() => {
+                            setSelectedUser({})
+                            setOpenSettings(true)
+                        }}
+                        sx={{
+                            height: 34,
+                            bgcolor: '#0284c7',
+                            color: '#fff',
+                            borderRadius: '8px',
+                            textTransform: 'none',
+                            fontWeight: 600,
+                            fontSize: '0.8rem',
+                            boxShadow: '0 4px 12px rgba(2, 132, 199, 0.3)',
+                            '&:hover': { bgcolor: '#0369a1' }
+                        }}
+                    >
+                        Add Account
+                    </Button>
+
+                    <Tooltip title="Log out">
+                        <IconButton
+                            size="small"
+                            onClick={logout}
+                            sx={{ color: '#94a3b8', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', p: 0.8 }}
                         >
+                            <LogoutIcon fontSize="small" />
+                        </IconButton>
+                    </Tooltip>
+                </Box>
+            </Paper>
+
+            {/* Accounts Table Card */}
+            <TableContainer
+                component={Paper}
+                className="glass-panel"
+                elevation={0}
+                sx={{ border: '1px solid rgba(255, 255, 255, 0.08)', borderRadius: '14px', overflow: 'hidden' }}
+            >
+                <Table sx={{ minWidth: 700 }}>
+                    <TableHead>
+                        <TableRow sx={{ bgcolor: 'rgba(0, 0, 0, 0.3)' }}>
                             <TableCell padding="checkbox">
                                 <Checkbox
-                                    color="primary"
-                                    checked={isItemSelected}
-                                    onClick={() => {
-                                        let index = selected.indexOf(row.id)
-                                        if (index < 0) {
-                                            selected.push(row.id)
-                                            setSelected(Array.from(selected))
-                                            return
-                                        }
-                                        setSelected(selected.toSpliced(index, 1))
-                                    }}
-                                    inputProps={{
-                                        'aria-labelledby': labelId,
-                                    }}
+                                    size="small"
+                                    checked={rows.length > 0 && rows.length === selected.length}
+                                    indeterminate={selected.length > 0 && selected.length < rows.length}
+                                    onChange={handleSelectAllClick}
+                                    sx={{ color: 'rgba(255,255,255,0.3)', '&.Mui-checked': { color: '#38bdf8' } }}
                                 />
                             </TableCell>
-                            <TableCell component="th" scope="row">{row.name}</TableCell>
-
-                            <TableCell align="left" padding='none' sx={{ scrollbarColor: "#5e6269 #2d2f31", scrollbarWidth: "thin", maxWidth: "20vw", overflow: "auto", whiteSpace: "nowrap" }}>
-                                {getEnabledPlugins().map(__).join(" ")}
+                            <TableCell sx={{ color: '#94a3b8', fontWeight: 600, fontSize: '0.78rem', textTransform: 'uppercase' }}>
+                                Account
                             </TableCell>
-                            <TableCell>
-                                <Box sx={{ display: 'flex'}}> {
-                                    Object.entries(status).map(([key, value], index) => {
-                                        if (['id', 'hasError'].includes(key))
-                                            value = undefined
-                                        
-                                        return <Box key={index} sx={{ display: 'flex', flexDirection: "column", paddingRight: "10px" }}>
-                                            <Typography>{value > 0 ? __(key) : ""}</Typography>
-                                            <Typography>{value > 0 ? key == "attackDailyCount" ? value : new Intl.NumberFormat(languageCode, { notation: 'compact' }).format(value) : ""}</Typography>
-                                        </Box>
-                                    })
-                                }
-                                </Box>
+                            <TableCell sx={{ color: '#94a3b8', fontWeight: 600, fontSize: '0.78rem', textTransform: 'uppercase' }}>
+                                Active Automation
                             </TableCell>
-                            <TableCell align="right" padding='none' style={{ padding: "10px" }}>
-                                <Button variant="text" onClick={() => {
-                                    handleResourcesOpen(status)
-                                }}>{__("resources")}</Button>
-                                <Button variant="text" onClick={() => {
-                                    ws.send(JSON.stringify([ErrorType.Success, ActionType.GetLogs, row]))
-                                    handleLogOpen()
-                                }}>{__("logs")}</Button>
-                                <Button variant="text" onClick={() => {
-                                    setSelectedUser(row)
-                                    setOpenSettings(true)
-                                }}>{__("settings")}</Button>
-                                <Button
-                                    onClick={() => {
-                                        row.state = !state
-                                        ws.send(JSON.stringify([ErrorType.Success, ActionType.SetUser, row]))
-                                        setState(!state)
-                                    }}
-                                    variant={state ? "contained" : "outlined"}
-                                    color={state ? "error" : "success" }
-                                    style={{ maxWidth: '64px', maxHeight: '32px', minWidth: '32px', minHeight: '32px', marginLeft: "10px" }}>{state ? __("stop") : __("start")}</Button>
+                            <TableCell sx={{ color: '#94a3b8', fontWeight: 600, fontSize: '0.78rem', textTransform: 'uppercase' }}>
+                                Status & Metrics
                             </TableCell>
-                        </TableRow>)
-                    }
-                    return <PlayerRow key={row.id} />
-                })}
-                <TableRow
-                    sx={{ '&:last-child td, &:last-child th': { border: 0 } }}
-                >
-                    <TableCell align='right' padding='none' />
-                    <TableCell align='right' padding='none' />
-                    <TableCell align='right' padding='none' />
-                    <TableCell align='right' padding='none' />
-                    <TableCell align='right' padding='none'>
-                        <Button 
-                        variant="text" 
-                        style={{ 
-                            maxWidth: '64px', 
-                            maxHeight: '32px', 
-                            minWidth: '32px', 
-                            minHeight: '32px', 
-                            paddingLeft: "38px", 
-                            paddingRight: "38px", 
-                            margin: "10px" 
-                        }} onClick={() => {
-                            ws.send(JSON.stringify([ErrorType.Success, ActionType.RemoveUser, rows.filter((e) => selected.includes(e.id))]))
-                        }}>{__("remove")}</Button>
-                    </TableCell>
-                </TableRow>
-            </TableBody>
-        </Table></TableContainer>
-}
-export default function GGEUserTable({ setLanguage, __, languageCode, rows, usersStatus, ws, channelInfo, plugins }) {
-    const user = {}
+                            <TableCell align="right" sx={{ color: '#94a3b8', fontWeight: 600, fontSize: '0.78rem', textTransform: 'uppercase' }}>
+                                Actions
+                            </TableCell>
+                        </TableRow>
+                    </TableHead>
+                    <TableBody>
+                        {rows.length === 0 ? (
+                            <TableRow>
+                                <TableCell colSpan={5} align="center" sx={{ py: 6, color: '#64748b' }}>
+                                    No Goodgame Empire accounts configured. Click "+ Add Account" to start.
+                                </TableCell>
+                            </TableRow>
+                        ) : (
+                            rows.map((row) => {
+                                const isItemSelected = selected.includes(row.id)
+                                const isRunning = Boolean(row.state)
+                                const status = usersStatus[row.id] ?? {}
 
-    const [openSettings, setOpenSettings] = React.useState(false)
-    const [selectedUser, setSelectedUser] = React.useState(user)
-    const [openLogs, setOpenLogs] = React.useState(false)
-    const [openResources, setOpenResources] = React.useState(false)
+                                const enabledPluginsList = Object.entries(row.plugins || {})
+                                    .filter(([_, v]) => Boolean(v?.state) && !v?.forced)
+                                    .map(([k]) => k)
 
-    const handleSettingsOpen = () => setOpenSettings(true)
-    const handleSettingsClose = () => {
-        setOpenSettings(false)
-        setSelectedUser(user)
-    }
+                                return (
+                                    <TableRow
+                                        key={row.id}
+                                        hover
+                                        sx={{
+                                            bgcolor: isItemSelected ? 'rgba(56, 189, 248, 0.04)' : 'transparent',
+                                            '&:hover': { bgcolor: 'rgba(255, 255, 255, 0.02) !important' }
+                                        }}
+                                    >
+                                        <TableCell padding="checkbox">
+                                            <Checkbox
+                                                size="small"
+                                                checked={isItemSelected}
+                                                onChange={() => {
+                                                    if (isItemSelected) setSelected(selected.filter(id => id !== row.id))
+                                                    else setSelected([...selected, row.id])
+                                                }}
+                                                sx={{ color: 'rgba(255,255,255,0.3)', '&.Mui-checked': { color: '#38bdf8' } }}
+                                            />
+                                        </TableCell>
 
-    const handleLogClose = () => setOpenLogs(false)
-    const handleLogOpen = () => setOpenLogs(true)
-    const handleResourcesClose = () => setOpenResources(false)
-    const handleResourcesOpen = (status) => setOpenResources(status.resources)
-    return (
-        <>
-            <Backdrop
-                sx={theme => ({ color: '#fff', zIndex: theme.zIndex.drawer + 1 })}
-                open={openSettings}
-                onClick={handleSettingsClose}
-                style={{ maxHeight: '100%', overflow: 'auto' }}
-                key={selectedUser.id} >
-                <UserSettings ws={ws}
-                    selectedUser={selectedUser}
-                    key={selectedUser.id}
-                    closeBackdrop={handleSettingsClose}
-                    plugins={plugins}
-                    channels={channelInfo[1]}
-                    __={__} />
-            </Backdrop>
-            <Backdrop
-                sx={theme => ({ color: '#fff', zIndex: theme.zIndex.drawer + 1 })}
-                open={openLogs}
-                onClick={() => {
-                    ws.send(JSON.stringify([ErrorType.Success, ActionType.GetLogs, undefined]))
+                                        {/* Name & Status Indicator */}
+                                        <TableCell>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.2 }}>
+                                                <Box
+                                                    sx={{
+                                                        width: 8,
+                                                        height: 8,
+                                                        borderRadius: '50%',
+                                                        bgcolor: isRunning ? '#10b981' : '#64748b',
+                                                        boxShadow: isRunning ? '0 0 8px #10b981' : 'none'
+                                                    }}
+                                                />
+                                                <Box>
+                                                    <Typography sx={{ fontWeight: 600, color: '#f8fafc', fontSize: '0.92rem' }}>
+                                                        {row.name}
+                                                    </Typography>
+                                                    <Typography variant="caption" sx={{ color: '#64748b' }}>
+                                                        ID #{row.id}
+                                                    </Typography>
+                                                </Box>
+                                            </Box>
+                                        </TableCell>
 
-                    handleLogClose()
-                }}
-                style={{ maxHeight: '100%', overflow: 'auto' }} >
-                <Log ws={ws} __={__} />
-            </Backdrop>
-            <Backdrop
-                sx={theme => ({ color: '#fff', zIndex: theme.zIndex.drawer + 1 })}
-                open={openResources !== false}
-                onClick={() => {
-                    handleResourcesClose()
-                }}
-                style={{ maxHeight: '100%', overflow: 'auto' }} >
-                <Resources usersStatus={usersStatus} __={__}  openResources={openResources} languageCode={languageCode}/>
-            </Backdrop>
-            <PlayerTable
-                setLanguage={setLanguage}
-                __={__}
-                languageCode={languageCode}
-                rows={rows}
-                usersStatus={usersStatus}
+                                        {/* Enabled Plugins Chips */}
+                                        <TableCell>
+                                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.6, maxWidth: 360 }}>
+                                                {enabledPluginsList.length === 0 ? (
+                                                    <Typography variant="caption" sx={{ color: '#64748b', fontStyle: 'italic' }}>
+                                                        No plugins enabled
+                                                    </Typography>
+                                                ) : (
+                                                    enabledPluginsList.map((pKey) => (
+                                                        <Chip
+                                                            key={pKey}
+                                                            label={__(pKey)}
+                                                            size="small"
+                                                            sx={{
+                                                                height: 22,
+                                                                fontSize: '0.72rem',
+                                                                bgcolor: 'rgba(56, 189, 248, 0.1)',
+                                                                color: '#38bdf8',
+                                                                border: '1px solid rgba(56, 189, 248, 0.2)'
+                                                            }}
+                                                        />
+                                                    ))
+                                                )}
+                                            </Box>
+                                        </TableCell>
+
+                                        {/* Metrics & Daily Counts */}
+                                        <TableCell>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                                                {Object.entries(status).map(([key, val], idx) => {
+                                                    if (['id', 'hasError'].includes(key) || !val || val <= 0) return null
+                                                    const formatted = key === 'attackDailyCount' ? val : new Intl.NumberFormat(languageCode, { notation: 'compact' }).format(val)
+                                                    return (
+                                                        <Box key={idx} sx={{ display: 'flex', flexDirection: 'column' }}>
+                                                            <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.7rem' }}>
+                                                                {__(key)}
+                                                            </Typography>
+                                                            <Typography sx={{ fontWeight: 700, fontSize: '0.85rem', color: '#f8fafc' }}>
+                                                                {formatted}
+                                                            </Typography>
+                                                        </Box>
+                                                    )
+                                                })}
+                                            </Box>
+                                        </TableCell>
+
+                                        {/* Action Buttons */}
+                                        <TableCell align="right">
+                                            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.8 }}>
+                                                <Tooltip title="View Resources">
+                                                    <IconButton
+                                                        size="small"
+                                                        onClick={() => {
+                                                            setResData(status)
+                                                            setResOpen(true)
+                                                        }}
+                                                        sx={{ color: '#94a3b8', '&:hover': { color: '#38bdf8', bgcolor: 'rgba(56,189,248,0.1)' } }}
+                                                    >
+                                                        <InventoryIcon fontSize="small" />
+                                                    </IconButton>
+                                                </Tooltip>
+
+                                                <Tooltip title="Live Terminal Logs">
+                                                    <IconButton
+                                                        size="small"
+                                                        onClick={() => {
+                                                            ws.send(JSON.stringify([ErrorType.Success, ActionType.GetLogs, row]))
+                                                            setLogTargetUser(row)
+                                                            setLogOpen(true)
+                                                        }}
+                                                        sx={{ color: '#94a3b8', '&:hover': { color: '#38bdf8', bgcolor: 'rgba(56,189,248,0.1)' } }}
+                                                    >
+                                                        <TerminalIcon fontSize="small" />
+                                                    </IconButton>
+                                                </Tooltip>
+
+                                                <Tooltip title="Account Settings & Plugins">
+                                                    <IconButton
+                                                        size="small"
+                                                        onClick={() => {
+                                                            setSelectedUser(row)
+                                                            setOpenSettings(true)
+                                                        }}
+                                                        sx={{ color: '#94a3b8', '&:hover': { color: '#38bdf8', bgcolor: 'rgba(56,189,248,0.1)' } }}
+                                                    >
+                                                        <SettingsIcon fontSize="small" />
+                                                    </IconButton>
+                                                </Tooltip>
+
+                                                <Button
+                                                    variant={isRunning ? "contained" : "outlined"}
+                                                    color={isRunning ? "error" : "success"}
+                                                    size="small"
+                                                    startIcon={isRunning ? <StopIcon sx={{ fontSize: '0.9rem !important' }} /> : <PlayArrowIcon sx={{ fontSize: '0.9rem !important' }} />}
+                                                    onClick={() => {
+                                                        row.state = !row.state
+                                                        ws.send(JSON.stringify([ErrorType.Success, ActionType.SetUser, row]))
+                                                    }}
+                                                    sx={{
+                                                        height: 28,
+                                                        fontSize: '0.75rem',
+                                                        fontWeight: 600,
+                                                        borderRadius: '6px',
+                                                        textTransform: 'none',
+                                                        minWidth: 78
+                                                    }}
+                                                >
+                                                    {isRunning ? "Stop" : "Start"}
+                                                </Button>
+                                            </Box>
+                                        </TableCell>
+                                    </TableRow>
+                                )
+                            })
+                        )}
+
+                        {/* Batch Action Footer */}
+                        {selected.length > 0 && (
+                            <TableRow sx={{ bgcolor: 'rgba(244, 63, 94, 0.05)' }}>
+                                <TableCell colSpan={4}>
+                                    <Typography variant="caption" sx={{ color: '#cbd5e1', fontWeight: 600 }}>
+                                        {selected.length} account(s) selected
+                                    </Typography>
+                                </TableCell>
+                                <TableCell align="right">
+                                    <Button
+                                        variant="outlined"
+                                        color="error"
+                                        size="small"
+                                        startIcon={<DeleteOutlineIcon />}
+                                        onClick={() => {
+                                            ws.send(JSON.stringify([ErrorType.Success, ActionType.RemoveUser, rows.filter(e => selected.includes(e.id))]))
+                                            setSelected([])
+                                        }}
+                                        sx={{ textTransform: 'none', fontSize: '0.75rem', borderRadius: '6px' }}
+                                    >
+                                        {__("remove") || "Remove Selected"}
+                                    </Button>
+                                </TableCell>
+                            </TableRow>
+                        )}
+                    </TableBody>
+                </Table>
+            </TableContainer>
+
+            {/* Modals */}
+            <LogModal
                 ws={ws}
-                channelInfo={channelInfo}
-                handleSettingsOpen={handleSettingsOpen}
-                handleLogOpen={handleLogOpen}
-                handleResourcesOpen={handleResourcesOpen}
-                setSelectedUser={setSelectedUser}
-                setOpenSettings={setOpenSettings}
-                plugins={plugins}
+                __={__}
+                open={logOpen}
+                onClose={() => setLogOpen(false)}
+                targetUser={logTargetUser}
             />
-        </>
+
+            <ResourcesModal
+                __={__}
+                open={resOpen}
+                onClose={() => setResOpen(false)}
+                resources={resData}
+                languageCode={languageCode}
+            />
+
+            {openSettings && (
+                <UserSettings
+                    __={__}
+                    selectedUser={selectedUser}
+                    channels={channelInfo[1] ?? []}
+                    plugins={plugins}
+                    ws={ws}
+                    closeBackdrop={() => setOpenSettings(false)}
+                />
+            )}
+        </Box>
     )
 }
