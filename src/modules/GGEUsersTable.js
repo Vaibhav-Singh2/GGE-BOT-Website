@@ -160,7 +160,7 @@ function LanguageSelector({ languageCode, setLanguage }) {
 let assetsCache = null
 
 function ResourcesModal({ __, open, onClose, resources, languageCode }) {
-    if (!resources) return null
+    if (!resources || typeof resources !== 'object') return null
 
     const nameOverrides = {
         screws: "component1",
@@ -175,9 +175,12 @@ function ResourcesModal({ __, open, onClose, resources, languageCode }) {
     const cleanRes = { ...resources }
     delete cleanRes["coins"]
     delete cleanRes["rubies"]
+    delete cleanRes["id"]
+    delete cleanRes["hasError"]
+    delete cleanRes["resources"]
 
     for (const key in nameOverrides) {
-        if (cleanRes[key]) {
+        if (cleanRes[key] !== undefined) {
             cleanRes[nameOverrides[key]] = cleanRes[key]
             delete cleanRes[key]
         }
@@ -210,11 +213,13 @@ function ResourcesModal({ __, open, onClose, resources, languageCode }) {
             <DialogContent sx={{ p: 3 }}>
                 <Grid container spacing={2}>
                     {Object.entries(cleanRes).map(([key, value], i) => {
-                        if ([, 0, null].includes(value)) return null
+                        if (value === undefined || value === null || value === 0 || typeof value === 'object') return null
                         const jsonKey = capitalizeFirstLetter(key)
-                        let formattedVal = value
-                        if (Number(value)) {
+                        let formattedVal = String(value)
+                        if (typeof value === 'number' && !isNaN(value)) {
                             formattedVal = new Intl.NumberFormat(languageCode, { notation: 'compact' }).format(value)
+                        } else if (!isNaN(Number(value))) {
+                            formattedVal = new Intl.NumberFormat(languageCode, { notation: 'compact' }).format(Number(value))
                         }
                         return (
                             <Grid item xs={4} sm={3} md={2.4} key={i}>
@@ -525,8 +530,8 @@ export default function GGEUserTable({
                                         <TableCell>
                                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                                                 {Object.entries(status).map(([key, val], idx) => {
-                                                    if (['id', 'hasError'].includes(key) || !val || val <= 0) return null
-                                                    const formatted = key === 'attackDailyCount' ? val : new Intl.NumberFormat(languageCode, { notation: 'compact' }).format(val)
+                                                    if (['id', 'hasError', 'resources'].includes(key) || typeof val === 'object' || !val || val <= 0) return null
+                                                    const formatted = key === 'attackDailyCount' ? String(val) : (typeof val === 'number' ? new Intl.NumberFormat(languageCode, { notation: 'compact' }).format(val) : String(val))
                                                     return (
                                                         <Box key={idx} sx={{ display: 'flex', flexDirection: 'column' }}>
                                                             <Typography variant="caption" sx={{ color: '#94a3b8', fontSize: '0.7rem' }}>
@@ -548,7 +553,7 @@ export default function GGEUserTable({
                                                     <IconButton
                                                         size="small"
                                                         onClick={() => {
-                                                            setResData(status)
+                                                            setResData(status?.resources || status)
                                                             setResOpen(true)
                                                         }}
                                                         sx={{ color: '#94a3b8', '&:hover': { color: '#38bdf8', bgcolor: 'rgba(56,189,248,0.1)' } }}
