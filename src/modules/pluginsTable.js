@@ -120,7 +120,7 @@ function PluginOption({ pluginData, channels, userPlugins, plugin, __ }) {
                                             <PluginOption
                                                 pluginData={pData}
                                                 channels={channels}
-                                                userPlugins={userPlugins[plugin.key] ??= {}}
+                                                userPlugins={userPlugins}
                                                 __={__}
                                                 plugin={plugin}
                                             />

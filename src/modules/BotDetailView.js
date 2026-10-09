@@ -268,13 +268,20 @@ const SIDEBAR_STRUCTURE = [
 
 function PluginOptionField({ option, userPlugins, pluginKey, channels, __, onOptionChange }) {
     userPlugins[pluginKey] ??= {}
-    const [val, setVal] = React.useState(userPlugins[pluginKey][option.key] ?? option.default)
+    const externalVal = userPlugins[pluginKey]?.[option.key] ?? option.default ?? ""
+    const [val, setVal] = React.useState(externalVal)
+    const lastLocalValRef = React.useRef(externalVal)
 
     React.useEffect(() => {
-        setVal(userPlugins[pluginKey][option.key] ?? option.default)
-    }, [userPlugins, pluginKey, option.key, option.default])
+        if (externalVal !== lastLocalValRef.current) {
+            setVal(externalVal)
+            lastLocalValRef.current = externalVal
+        }
+    }, [externalVal])
 
     const handleChange = newVal => {
+        lastLocalValRef.current = newVal
+        userPlugins[pluginKey] ??= {}
         userPlugins[pluginKey][option.key] = newVal
         setVal(newVal)
         if (onOptionChange) onOptionChange(pluginKey, option.key, newVal)
@@ -317,49 +324,117 @@ function PluginOptionField({ option, userPlugins, pluginKey, channels, __, onOpt
             // Enhanced troop selector for troopIDs, mainTroopIDs, outpost1TroopIDs, etc.
             const isTroopField = option.key === 'troopIDs' || option.key.toLowerCase().includes('troopids')
             if (isTroopField) {
-                const currentIds = String(val || "")
+                const currentIds = String(val ?? "")
                     .split(/[\s,]+/)
+                    .map(s => s.trim())
                     .filter(Boolean)
                     .map(Number)
                     .filter(id => Number.isInteger(id) && id > 0)
-                const selectedUnits = currentIds.map(id => unitsCatalog.find(u => u.id === id) || { id, name: `Unit #${id}` })
+
+                const handleAddTroop = (troopId) => {
+                    if (!troopId) return
+                    const existing = String(val ?? "").split(/[\s,]+/).map(s => s.trim()).filter(Boolean)
+                    if (!existing.includes(String(troopId))) {
+                        const updated = existing.length > 0 ? `${existing.join(', ')}, ${troopId}` : String(troopId)
+                        handleChange(updated)
+                    }
+                }
+
+                const handleRemoveTroop = (troopIdToRemove) => {
+                    const existing = String(val ?? "").split(/[\s,]+/).map(s => s.trim()).filter(Boolean)
+                    const updated = existing.filter(id => Number(id) !== troopIdToRemove).join(', ')
+                    handleChange(updated)
+                }
 
                 return (
-                    <Box sx={{ mb: 1.5 }}>
-                        <Typography variant="caption" sx={{ color: '#94a3b8', display: 'block', mb: 0.5 }}>
-                            {__(option.key)} (Troop Priority Picker)
+                    <Box sx={{ mb: 2, p: 1.5, borderRadius: '8px', bgcolor: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                        <Typography variant="caption" sx={{ color: '#38bdf8', fontWeight: 600, display: 'block', mb: 0.8 }}>
+                            {__(option.key)} (Troop IDs / Priority)
                         </Typography>
+
+                        {/* Direct Editable Text Input - Never resets or blocks free typing */}
+                        <TextField
+                            fullWidth
+                            size="small"
+                            placeholder="e.g. 2069, 28, 29 (comma separated IDs)"
+                            value={val ?? ""}
+                            onChange={e => handleChange(e.target.value)}
+                            helperText="Type troop IDs directly or use the search dropdown below to add troops."
+                            sx={{
+                                mb: 1,
+                                '& .MuiOutlinedInput-root': {
+                                    bgcolor: '#0f151e',
+                                    borderRadius: '6px',
+                                    fontSize: '0.82rem',
+                                    fontFamily: 'monospace',
+                                    '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                                    '&:hover fieldset': { borderColor: 'rgba(56, 189, 248, 0.4)' },
+                                    '&.Mui-focused fieldset': { borderColor: '#38bdf8' }
+                                },
+                                '& .MuiFormHelperText-root': {
+                                    color: '#64748b',
+                                    fontSize: '0.7rem'
+                                }
+                            }}
+                        />
+
+                        {/* Dropdown helper to search & add troops */}
                         <Autocomplete
-                            multiple
                             size="small"
                             options={unitsCatalog.filter(u => !u.isTool)}
                             getOptionLabel={opt => `${opt.name} (#${opt.id})`}
-                            value={selectedUnits}
-                            isOptionEqualToValue={(opt, val) => opt.id === val.id}
-                            onChange={(_, newValues) => {
-                                const newIdStr = newValues.map(v => v.id).join(', ')
-                                handleChange(newIdStr)
+                            onChange={(_, selectedOption) => {
+                                if (selectedOption && selectedOption.id) {
+                                    handleAddTroop(selectedOption.id)
+                                }
                             }}
+                            value={null}
                             renderInput={params => (
                                 <TextField
                                     {...params}
-                                    placeholder="Search and select troops..."
-                                    helperText="Select troops in priority order. Underlying IDs are saved automatically."
+                                    placeholder="+ Search & add troop by name..."
+                                    size="small"
                                     sx={{
                                         '& .MuiOutlinedInput-root': {
-                                            bgcolor: '#0f151e',
+                                            bgcolor: 'rgba(15, 21, 30, 0.6)',
                                             borderRadius: '6px',
-                                            fontSize: '0.82rem',
-                                            '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' }
-                                        },
-                                        '& .MuiFormHelperText-root': {
-                                            color: '#64748b',
-                                            fontSize: '0.7rem'
+                                            fontSize: '0.78rem',
+                                            '& fieldset': { borderColor: 'rgba(255,255,255,0.06)' }
                                         }
                                     }}
                                 />
                             )}
                         />
+
+                        {/* Visual chips for active parsed troop IDs */}
+                        {currentIds.length > 0 && (
+                            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.8, mt: 1.2 }}>
+                                {currentIds.map(id => {
+                                    const unit = unitsCatalog.find(u => u.id === id)
+                                    const label = unit ? `${unit.name} (#${id})` : `Troop #${id}`
+                                    return (
+                                        <Chip
+                                            key={id}
+                                            label={label}
+                                            size="small"
+                                            onDelete={() => handleRemoveTroop(id)}
+                                            sx={{
+                                                bgcolor: 'rgba(56, 189, 248, 0.12)',
+                                                color: '#e2e8f0',
+                                                border: '1px solid rgba(56, 189, 248, 0.3)',
+                                                fontSize: '0.72rem',
+                                                height: '24px',
+                                                '& .MuiChip-deleteIcon': {
+                                                    color: 'rgba(255,255,255,0.4)',
+                                                    fontSize: '14px',
+                                                    '&:hover': { color: '#ef4444' }
+                                                }
+                                            }}
+                                        />
+                                    )
+                                })}
+                            </Box>
+                        )}
                     </Box>
                 )
             }
