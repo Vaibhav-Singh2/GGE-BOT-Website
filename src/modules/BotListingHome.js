@@ -22,7 +22,7 @@ import {
 import PlayArrowIcon from '@mui/icons-material/PlayArrow'
 import StopIcon from '@mui/icons-material/Stop'
 import AddIcon from '@mui/icons-material/Add'
-import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline'
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlined'
 import ArrowForwardIosIcon from '@mui/icons-material/ArrowForwardIos'
 import PrecisionManufacturingIcon from '@mui/icons-material/PrecisionManufacturing'
 import DnsIcon from '@mui/icons-material/Dns'
